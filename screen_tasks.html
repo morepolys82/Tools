@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad - Unlimited IndexedDB & Layered Markup</title>
+  <title>Visual Scratchpad - Layered Markup & Stable Diffusion AI</title>
   
   <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
@@ -15,15 +15,17 @@
     /* Top Floating Header */
     #toolbar {
       position: fixed; top: 16px; left: 16px; z-index: 100;
-      display: flex; align-items: center; gap: 12px; background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(8px);
+      display: flex; align-items: center; gap: 10px; background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(8px);
       padding: 8px 16px; border-radius: 10px; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
     }
     .badge { background: #3b82f6; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.5px; }
-    .shortcuts { font-size: 0.8rem; color: #cbd5e1; display: flex; gap: 12px; }
+    .shortcuts { font-size: 0.8rem; color: #cbd5e1; display: flex; gap: 10px; }
     .shortcuts kbd { background: #1e293b; border: 1px solid #475569; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-weight: 600; color: #f8fafc; }
     
-    .btn-header { background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
+    .btn-header { background: #10b981; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
     .btn-header:hover { background: #059669; }
+    .btn-ai-cfg { background: #8b5cf6; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; }
+    .btn-ai-cfg:hover { background: #7c3aed; }
     .btn-danger { background: #ef4444; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; }
     .btn-danger:hover { background: #dc2626; }
 
@@ -60,6 +62,8 @@
     
     .btn-action { background: none; border: none; color: #94a3b8; padding: 3px 6px; font-size: 0.85rem; cursor: pointer; border-radius: 4px; }
     .btn-action:hover { background: rgba(255,255,255,0.1); color: #f8fafc; }
+    .btn-ai { color: #a855f7; font-weight: 600; }
+    .btn-ai:hover { background: rgba(168, 85, 247, 0.2); color: #c084fc; }
     .btn-copy { color: #60a5fa; font-weight: 600; }
     .btn-copy:hover { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
     .btn-delete { color: #ef4444; }
@@ -73,11 +77,11 @@
     #empty-state h2 { font-size: 1.3rem; margin-bottom: 8px; color: #94a3b8; }
 
     /* Layered Markup Modal */
-    #markup-modal {
+    #markup-modal, #ai-modal {
       position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.85);
       backdrop-filter: blur(6px); display: none; flex-direction: column; align-items: center; justify-content: center;
     }
-    #markup-modal.active { display: flex; }
+    #markup-modal.active, #ai-modal.active { display: flex; }
     
     #markup-toolbar {
       display: flex; gap: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 8px;
@@ -105,6 +109,28 @@
     #base-canvas { display: block; }
     #drawing-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
     #drawing-canvas.eraser-mode { cursor: cell; }
+
+    /* ==========================================
+       ✨ STABLE DIFFUSION AI MODAL
+       ========================================== */
+    .ai-card-dialog {
+      background: #1e293b; border: 1px solid #475569; border-radius: 12px;
+      padding: 24px; width: 440px; max-width: 90vw; box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .ai-card-dialog h3 { font-size: 1.2rem; display: flex; align-items: center; gap: 8px; color: #f8fafc; }
+    .ai-field { display: flex; flex-direction: column; gap: 6px; }
+    .ai-field label { font-size: 0.8rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .ai-field textarea, .ai-field select, .ai-field input[type="text"] {
+      background: #0f172a; border: 1px solid #334155; color: white; border-radius: 6px;
+      padding: 10px; font-size: 0.9rem; font-family: inherit; outline: none; resize: none;
+    }
+    .ai-field textarea:focus, .ai-field select:focus, .ai-field input[type="text"]:focus { border-color: #8b5cf6; }
+    .ai-slider-row { display: flex; align-items: center; justify-content: space-between; font-size: 0.85rem; color: #cbd5e1; }
+    .ai-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+    .btn-generate { background: #8b5cf6; border: none; color: white; padding: 8px 18px; border-radius: 6px; font-weight: 700; cursor: pointer; transition: background 0.15s; }
+    .btn-generate:hover { background: #7c3aed; }
+    .btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 <body tabindex="0">
@@ -115,9 +141,9 @@
     <div class="shortcuts">
       <span>Snip: <kbd>Win+Shift+S</kbd> / <kbd>Cmd+Shift+4</kbd></span>
       <span>Paste: <kbd>Ctrl+V</kbd></span>
-      <span>Copy for Slack: <kbd>Select + Ctrl+C</kbd></span>
-      <span>Edit Note: <kbd>Double-Click</kbd></span>
+      <span>Slack: <kbd>Select + Ctrl+C</kbd></span>
     </div>
+    <button class="btn-ai-cfg" onclick="configureHfToken()" title="Set or update your Hugging Face API token">🔑 HF Token</button>
     <button class="btn-header" id="btn-export" onclick="exportToExcelSheet()">📊 Export for Google Sheets (.xlsx)</button>
     <button class="btn-danger" onclick="clearCanvas()">🗑️ Clear All</button>
   </div>
@@ -134,7 +160,7 @@
     <div id="world"></div>
   </div>
 
-  <!-- Interactive Layered Markup Modal -->
+  <!-- Layered Markup Modal -->
   <div id="markup-modal">
     <div id="markup-toolbar">
       <button class="tool-btn active" id="tool-pen" onclick="setTool('pen')">✏️ Pen</button>
@@ -173,6 +199,39 @@
     </div>
   </div>
 
+  <!-- Stable Diffusion AI Modal -->
+  <div id="ai-modal">
+    <div class="ai-card-dialog">
+      <h3>✨ Stable Diffusion Transform</h3>
+      
+      <div class="ai-field">
+        <label>Prompt</label>
+        <textarea id="ai-prompt" rows="3" placeholder="e.g., modern sci-fi game UI concept, high tech HUD, 8k render, octane render, photorealistic..."></textarea>
+      </div>
+
+      <div class="ai-field">
+        <label>Model</label>
+        <select id="ai-model">
+          <option value="stabilityai/stable-diffusion-xl-refiner-1.0">SDXL Refiner 1.0 (High Detail)</option>
+          <option value="runwayml/stable-diffusion-v1-5">Stable Diffusion v1.5 (Fast)</option>
+        </select>
+      </div>
+
+      <div class="ai-field">
+        <div class="ai-slider-row">
+          <label>Transformation Strength</label>
+          <span id="ai-strength-val">0.65</span>
+        </div>
+        <input type="range" id="ai-strength" min="0.2" max="0.9" step="0.05" value="0.65" oninput="document.getElementById('ai-strength-val').innerText = this.value">
+      </div>
+
+      <div class="ai-actions">
+        <button class="cancel-btn" onclick="closeAiModal()">Cancel</button>
+        <button class="btn-generate" id="btn-ai-submit" onclick="executeStableDiffusion()">✨ Generate Variation</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ==========================================
     // 💽 0. UNLIMITED INDEXEDDB STORAGE ENGINE
@@ -184,7 +243,7 @@
     let cards = [];
 
     function initDB() {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve) => {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = (e) => {
           const dbInstance = e.target.result;
@@ -197,9 +256,7 @@
           await loadAllCards();
           resolve();
         };
-        req.onerror = (e) => {
-          console.error("IndexedDB error:", e);
-          // Fallback to in-memory cards
+        req.onerror = () => {
           cards = JSON.parse(localStorage.getItem('scratchpad_cards') || '[]');
           cards.forEach(renderCard);
           updateEmptyState();
@@ -232,19 +289,6 @@
         const req = tx.objectStore(STORE_NAME).getAll();
         req.onsuccess = () => {
           cards = req.result || [];
-          
-          // Migrate any existing items from localStorage if DB was empty
-          if (cards.length === 0 && localStorage.getItem('scratchpad_cards')) {
-            try {
-              const oldCards = JSON.parse(localStorage.getItem('scratchpad_cards') || '[]');
-              oldCards.forEach(c => {
-                dbSaveCard(c);
-                cards.push(c);
-              });
-              localStorage.removeItem('scratchpad_cards');
-            } catch (e) {}
-          }
-
           world.innerHTML = '';
           cards.forEach(renderCard);
           updateEmptyState();
@@ -340,7 +384,6 @@
       document.querySelectorAll('#markup-toolbar .tool-btn').forEach(btn => btn.classList.remove('active'));
       const activeBtn = document.getElementById(`tool-${tool}`);
       if (activeBtn) activeBtn.classList.add('active');
-      
       drawingCanvas.classList.toggle('eraser-mode', tool === 'eraser');
     }
 
@@ -557,7 +600,131 @@
     }
 
     // ==========================================
-    // 📋 3. MULTI-MIME SLACK CLIPBOARD EXPORT
+    // ✨ 3. STABLE DIFFUSION AI PIPELINE
+    // ==========================================
+    const aiModal = document.getElementById('ai-modal');
+    let aiTargetCardId = null;
+
+    function configureHfToken() {
+      const existing = localStorage.getItem('hf_token') || '';
+      const token = prompt("Enter your Hugging Face Access Token (starts with hf_...):", existing);
+      if (token !== null) {
+        localStorage.setItem('hf_token', token.trim());
+        showToast("🔑 Hugging Face Token saved!");
+      }
+    }
+
+    function openAiModal(cardId) {
+      const token = localStorage.getItem('hf_token');
+      if (!token) {
+        configureHfToken();
+        if (!localStorage.getItem('hf_token')) return;
+      }
+      aiTargetCardId = cardId;
+      aiModal.classList.add('active');
+      document.getElementById('ai-prompt').focus();
+    }
+
+    function closeAiModal() {
+      aiModal.classList.remove('active');
+      aiTargetCardId = null;
+      document.body.focus();
+    }
+
+    async function executeStableDiffusion() {
+      const token = localStorage.getItem('hf_token');
+      if (!token) {
+        alert("Please set your Hugging Face API token first.");
+        return;
+      }
+
+      const promptText = document.getElementById('ai-prompt').value.trim();
+      if (!promptText) {
+        alert("Please enter a prompt describing your transformation.");
+        return;
+      }
+
+      const card = cards.find(c => c.id === aiTargetCardId);
+      if (!card) return;
+
+      const modelId = document.getElementById('ai-model').value;
+      const strength = parseFloat(document.getElementById('ai-strength').value);
+      const submitBtn = document.getElementById('btn-ai-submit');
+
+      submitBtn.innerText = "⏳ Generating on GPU...";
+      submitBtn.disabled = true;
+
+      try {
+        // Convert Base64 dataURL to binary PNG Blob
+        const byteString = atob(card.img.split(',')[1]);
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+        const imageBlob = new Blob([ab], { type: 'image/png' });
+
+        // Prepare multipart/form-data for Hugging Face img2img
+        const formData = new FormData();
+        formData.append('inputs', imageBlob, 'image.png');
+        formData.append('parameters', JSON.stringify({
+          prompt: promptText,
+          strength: strength,
+          guidance_scale: 7.5
+        }));
+
+        const response = await fetch(`https://api-inference.huggingface.co/models/${modelId}`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `HF API returned status ${response.status}`);
+        }
+
+        const resBlob = await response.blob();
+        const reader = new FileReader();
+        reader.onload = () => {
+          const generatedDataUrl = reader.result;
+          closeAiModal();
+
+          // Spawn new AI variation card directly to the right of original card
+          const newCardNote = `✨ AI: ${promptText.slice(0, 30)}...`;
+          const spawnX = card.x + 360;
+          const spawnY = card.y;
+
+          const newCard = {
+            id: Date.now().toString(),
+            img: generatedDataUrl,
+            originalBaseImg: generatedDataUrl,
+            shapes: [],
+            note: newCardNote,
+            timestamp: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            x: spawnX,
+            y: spawnY,
+            done: false
+          };
+
+          cards.push(newCard);
+          dbSaveCard(newCard);
+          renderCard(newCard);
+          selectCard(newCard.id);
+          showToast("✨ AI Variation created on canvas!");
+        };
+        reader.readAsDataURL(resBlob);
+      } catch (err) {
+        console.error("Stable Diffusion generation error:", err);
+        alert("Stable Diffusion generation failed:\n" + err.message + "\n\nTip: The model might be waking up from cold storage. Try clicking Generate again in 10 seconds.");
+      } finally {
+        submitBtn.innerText = "✨ Generate Variation";
+        submitBtn.disabled = false;
+      }
+    }
+
+    // ==========================================
+    // 📋 4. MULTI-MIME SLACK CLIPBOARD EXPORT
     // ==========================================
     async function copyCardToClipboardForSlack(cardId) {
       const card = cards.find(c => c.id === cardId);
@@ -613,7 +780,7 @@
 
     // Global Paste Listener
     window.addEventListener('paste', (e) => {
-      if (markupModal.classList.contains('active')) return;
+      if (markupModal.classList.contains('active') || aiModal.classList.contains('active')) return;
       const items = (e.clipboardData || e.originalEvent.clipboardData).items;
       for (const item of items) {
         if (item.type.indexOf('image') === 0) {
@@ -627,7 +794,7 @@
     });
 
     // ==========================================
-    // 🗂️ 4. TASK CARD LOGIC
+    // 🗂️ 5. TASK CARD LOGIC
     // ==========================================
     function selectCard(cardId) {
       selectedCardId = cardId;
@@ -699,6 +866,7 @@
             <div class="card-meta">${card.timestamp}</div>
           </div>
           <div class="card-actions">
+            <button class="btn-action btn-ai" title="Transform with Stable Diffusion AI" onclick="openAiModal('${card.id}')">✨ AI</button>
             <button class="btn-action btn-copy" title="Copy Image & Note for Slack (Ctrl+C)" onclick="copyCardToClipboardForSlack('${card.id}')">📋 Slack</button>
             <button class="btn-action" title="Modify Screenshot & Markups" onclick="editCard('${card.id}')">✏️</button>
             <input type="checkbox" ${card.done ? 'checked' : ''} onchange="toggleDone('${card.id}')">
@@ -771,7 +939,7 @@
     }
 
     // ==========================================
-    // 📊 5. ASPECT-RATIO PRESERVING EXCEL EXPORT
+    // 📊 6. ASPECT-RATIO PRESERVING EXCEL EXPORT
     // ==========================================
     async function exportToExcelSheet() {
       if (cards.length === 0) {
