@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad - Layered Markup & Stable Diffusion AI</title>
+  <title>Visual Scratchpad - Copy For Sheets & Stable Diffusion v1</title>
   
-  <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
+  <!-- ExcelJS & FileSaver for Spreadsheet Generation with Embedded Images -->
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
@@ -15,13 +15,15 @@
     /* Top Floating Header */
     #toolbar {
       position: fixed; top: 16px; left: 16px; z-index: 100;
-      display: flex; align-items: center; gap: 10px; background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(8px);
+      display: flex; align-items: center; gap: 8px; background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(8px);
       padding: 8px 16px; border-radius: 10px; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
     }
     .badge { background: #3b82f6; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.5px; }
-    .shortcuts { font-size: 0.8rem; color: #cbd5e1; display: flex; gap: 10px; }
+    .shortcuts { font-size: 0.8rem; color: #cbd5e1; display: flex; gap: 8px; }
     .shortcuts kbd { background: #1e293b; border: 1px solid #475569; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-weight: 600; color: #f8fafc; }
     
+    .btn-copy-sheets { background: #0284c7; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
+    .btn-copy-sheets:hover { background: #0369a1; }
     .btn-header { background: #10b981; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
     .btn-header:hover { background: #059669; }
     .btn-ai-cfg { background: #8b5cf6; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; }
@@ -35,7 +37,7 @@
       background: #10b981; color: white; padding: 10px 20px; border-radius: 8px;
       font-weight: 600; font-size: 0.9rem; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
       opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
-      z-index: 2000;
+      z-index: 2000; text-align: center;
     }
     #toast.show { opacity: 1; transform: translate(-50%, -8px); }
 
@@ -136,18 +138,18 @@
   <!-- Controls -->
   <div id="toolbar">
     <span class="badge">SCRATCHPAD</span>
-    <div class="shortcuts">
-      <span>Snip: <kbd>Win+Shift+S</kbd> / <kbd>Cmd+Shift+4</kbd></span>
-      <span>Paste: <kbd>Ctrl+V</kbd></span>
-      <span>Slack: <kbd>Select + Ctrl+C</kbd></span>
-    </div>
+    <button class="btn-copy-sheets" onclick="copyForGoogleSheets()" title="Copy all cards formatted for Google Sheets pasting">📋 Copy For Sheets</button>
+    <button class="btn-header" id="btn-export" onclick="exportToExcelSheet()" title="Download as .xlsx with embedded images">📊 Export (.xlsx)</button>
     <button class="btn-ai-cfg" onclick="configureHfToken()" title="Set or update your Hugging Face API token">🔑 HF Token</button>
-    <button class="btn-header" id="btn-export" onclick="exportToExcelSheet()">📊 Export for Google Sheets (.xlsx)</button>
     <button class="btn-danger" onclick="clearCanvas()">🗑️ Clear All</button>
+    <div class="shortcuts">
+      <span>Snip: <kbd>Win+Shift+S</kbd></span>
+      <span>Paste: <kbd>Ctrl+V</kbd></span>
+    </div>
   </div>
 
   <!-- Toast Notification -->
-  <div id="toast">📋 Copied Image & Note to Clipboard! Ready for Slack.</div>
+  <div id="toast">📋 Copied Table to Clipboard! Paste (Ctrl+V) in cell A1 of Google Sheets.</div>
 
   <!-- Canvas Surface -->
   <div id="viewport">
@@ -315,7 +317,7 @@
     function showToast(msg) {
       if (msg) toast.innerText = msg;
       toast.classList.add('show');
-      setTimeout(() => toast.classList.remove('show'), 2500);
+      setTimeout(() => toast.classList.remove('show'), 3000);
     }
 
     function updateTransform() {
@@ -599,7 +601,50 @@
     }
 
     // ==========================================
-    // ✨ 3. STABLE DIFFUSION AI PIPELINE (FIXED JSON PAYLOAD)
+    // 📊 3. ONE-CLICK "COPY FOR GOOGLE SHEETS"
+    // ==========================================
+    async function copyForGoogleSheets() {
+      if (cards.length === 0) {
+        alert("Canvas is empty! Add some screenshots first.");
+        return;
+      }
+
+      // 1. Build formatted Tab-Separated Values (TSV) table for clean Sheets paste
+      let tsvData = "Done\tTimestamp\tNote / Task\tScreenshot Reference\n";
+      
+      cards.forEach((card, index) => {
+        const doneStatus = card.done ? "TRUE" : "FALSE";
+        const cleanNote = card.note.replace(/\t/g, " ").replace(/\r?\n/g, " ");
+        const refName = `snip_row_${index + 1}_${cleanNote.slice(0, 15).replace(/[^a-zA-Z0-9]/g, '_')}.png`;
+        
+        tsvData += `${doneStatus}\t${card.timestamp}\t${cleanNote}\t${refName}\n`;
+      });
+
+      // 2. Write to clipboard
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(tsvData);
+        } else {
+          // Hidden fallback
+          const textArea = document.createElement("textarea");
+          textArea.value = tsvData;
+          textArea.style.position = "fixed";
+          textArea.style.opacity = "0";
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+        }
+
+        showToast("📋 Copied Table! Go to Google Sheets, click A1 and press Ctrl+V.");
+      } catch (err) {
+        console.error("Clipboard copy error:", err);
+        window.prompt("Copy your spreadsheet data manually below (Ctrl+C), then paste in Google Sheets:", tsvData);
+      }
+    }
+
+    // ==========================================
+    // ✨ 4. STABLE DIFFUSION AI PIPELINE
     // ==========================================
     const aiModal = document.getElementById('ai-modal');
     let aiTargetCardId = null;
@@ -654,10 +699,8 @@
       submitBtn.disabled = true;
 
       try {
-        // 1. Extract pure base64 string
         const pureBase64 = card.img.includes(',') ? card.img.split(',')[1] : card.img;
 
-        // 2. Standard Hugging Face Serverless JSON payload
         const payload = {
           inputs: pureBase64,
           parameters: {
@@ -692,14 +735,12 @@
           throw new Error(errMsg);
         }
 
-        // 3. Convert returned binary image Blob to dataURL
         const resBlob = await response.blob();
         const reader = new FileReader();
         reader.onload = () => {
           const generatedDataUrl = reader.result;
           closeAiModal();
 
-          // Spawn new AI variation card directly to the right of original card
           const newCardNote = `✨ AI: ${promptText.slice(0, 30)}...`;
           const spawnX = card.x + 360;
           const spawnY = card.y;
@@ -733,7 +774,7 @@
     }
 
     // ==========================================
-    // 📋 4. MULTI-MIME SLACK CLIPBOARD EXPORT
+    // 📋 5. MULTI-MIME SLACK CLIPBOARD EXPORT
     // ==========================================
     async function copyCardToClipboardForSlack(cardId) {
       const card = cards.find(c => c.id === cardId);
@@ -803,7 +844,7 @@
     });
 
     // ==========================================
-    // 🗂️ 5. TASK CARD LOGIC
+    // 🗂️ 6. TASK CARD LOGIC
     // ==========================================
     function selectCard(cardId) {
       selectedCardId = cardId;
@@ -948,7 +989,7 @@
     }
 
     // ==========================================
-    // 📊 6. ASPECT-RATIO PRESERVING EXCEL EXPORT
+    // 📊 7. ASPECT-RATIO PRESERVING EXCEL EXPORT
     // ==========================================
     async function exportToExcelSheet() {
       if (cards.length === 0) {
@@ -1037,7 +1078,7 @@
         console.error(err);
         alert("Error exporting spreadsheet: " + err.message);
       } finally {
-        btn.innerText = "📊 Export for Google Sheets (.xlsx)";
+        btn.innerText = "📊 Export (.xlsx)";
         btn.disabled = false;
       }
     }
