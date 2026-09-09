@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad with Markup & Google Sheets Sync</title>
+  <title>Visual Scratchpad - Layered Markup & Excel Export</title>
+  
+  <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body, html { width: 100%; height: 100%; overflow: hidden; background: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #f8fafc; }
@@ -67,19 +72,23 @@
     }
     #empty-state h2 { font-size: 1.3rem; margin-bottom: 8px; color: #94a3b8; }
 
-    /* Markup Modal */
+    /* ==========================================
+       🎨 LAYERED MARKUP MODAL
+       ========================================== */
     #markup-modal {
       position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.85);
       backdrop-filter: blur(6px); display: none; flex-direction: column; align-items: center; justify-content: center;
     }
     #markup-modal.active { display: flex; }
+    
     #markup-toolbar {
-      display: flex; gap: 10px; background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+      display: flex; gap: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 8px;
       padding: 8px 14px; margin-bottom: 12px; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-      max-width: 90vw; flex-wrap: wrap; justify-content: center;
+      max-width: 95vw; flex-wrap: wrap; justify-content: center;
     }
     .tool-btn { background: #334155; border: 1px solid #475569; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; }
     .tool-btn.active { background: #3b82f6; border-color: #60a5fa; }
+    .tool-btn.eraser.active { background: #f59e0b; border-color: #fbbf24; }
     
     #modal-note-input {
       background: #0f172a; border: 1px solid #475569; color: white; padding: 6px 10px;
@@ -89,8 +98,16 @@
 
     .save-btn { background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 700; cursor: pointer; }
     .cancel-btn { background: #64748b; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; }
-    #canvas-container { max-width: 90vw; max-height: 75vh; overflow: auto; border: 2px solid #334155; border-radius: 8px; background: #0b0f19; }
-    #markup-canvas { display: block; cursor: crosshair; }
+    
+    /* Dual-Canvas Layer Stack */
+    #canvas-container {
+      position: relative; max-width: 90vw; max-height: 75vh; overflow: auto;
+      border: 2px solid #334155; border-radius: 8px; background: #0b0f19;
+    }
+    #canvas-wrapper { position: relative; display: inline-block; }
+    #base-canvas { display: block; }
+    #drawing-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+    #drawing-canvas.eraser-mode { cursor: cell; }
   </style>
 </head>
 <body>
@@ -104,7 +121,7 @@
       <span>Copy for Slack: <kbd>Select + Ctrl+C</kbd></span>
       <span>Edit Note: <kbd>Double-Click</kbd></span>
     </div>
-    <button class="btn-header" id="btn-export" onclick="exportToGoogleSheets()">📊 Export to Google Sheets</button>
+    <button class="btn-header" id="btn-export" onclick="exportToExcelSheet()">📊 Export for Google Sheets (.xlsx)</button>
     <button class="btn-danger" onclick="clearCanvas()">🗑️ Clear All</button>
   </div>
 
@@ -120,12 +137,13 @@
     <div id="world"></div>
   </div>
 
-  <!-- Interactive Markup Modal -->
+  <!-- Interactive Layered Markup Modal -->
   <div id="markup-modal">
     <div id="markup-toolbar">
       <button class="tool-btn active" id="tool-pen" onclick="setTool('pen')">✏️ Pen</button>
       <button class="tool-btn" id="tool-arrow" onclick="setTool('arrow')">↗️ Arrow</button>
       <button class="tool-btn" id="tool-rect" onclick="setTool('rect')">🔲 Box</button>
+      <button class="tool-btn eraser" id="tool-eraser" onclick="setTool('eraser')" title="Click or drag over drawings to remove them">🧹 Eraser</button>
       
       <span style="color: #64748b;">|</span>
       
@@ -138,7 +156,8 @@
       
       <span style="color: #64748b;">|</span>
       
-      <button class="tool-btn" onclick="undoMarkup()">↩️ Undo</button>
+      <button class="tool-btn" onclick="undoMarkup()" title="Undo last shape">↩️ Undo</button>
+      <button class="tool-btn" onclick="clearAllDrawings()" title="Clear all drawings from this image">🗑️ Clear Markups</button>
       
       <span style="color: #64748b;">|</span>
 
@@ -147,8 +166,13 @@
       <button class="save-btn" onclick="saveMarkupAndFinish()">💾 Save Changes</button>
       <button class="cancel-btn" onclick="closeMarkupModal()">Cancel</button>
     </div>
+
+    <!-- Dual Canvas Layers -->
     <div id="canvas-container">
-      <canvas id="markup-canvas"></canvas>
+      <div id="canvas-wrapper">
+        <canvas id="base-canvas"></canvas>
+        <canvas id="drawing-canvas"></canvas>
+      </div>
     </div>
   </div>
 
@@ -171,7 +195,7 @@
     function showToast(msg) {
       if (msg) toast.innerText = msg;
       toast.classList.add('show');
-      setTimeout(() => toast.classList.remove('show'), 3000);
+      setTimeout(() => toast.classList.remove('show'), 2500);
     }
 
     function updateTransform() {
@@ -218,18 +242,20 @@
     }, { passive: false });
 
     // ==========================================
-    // 🎨 2. IMAGE MARKUP & NOTE ENGINE
+    // 🎨 2. LAYERED VECTOR DRAWING ENGINE
     // ==========================================
     const markupModal = document.getElementById('markup-modal');
-    const markupCanvas = document.getElementById('markup-canvas');
-    const markupCtx = markupCanvas.getContext('2d');
+    const baseCanvas = document.getElementById('base-canvas');
+    const baseCtx = baseCanvas.getContext('2d');
+    const drawingCanvas = document.getElementById('drawing-canvas');
+    const drawCtx = drawingCanvas.getContext('2d');
     const modalNoteInput = document.getElementById('modal-note-input');
 
     let currentTool = 'pen';
     let isDrawing = false;
-    let drawStartX = 0, drawStartY = 0;
-    let baseImage = null;
-    let historyStack = [];
+    let currentShape = null;
+    let currentShapesList = []; // Vector shapes on drawing layer
+    let rawBaseImageSrc = null;  // Original unblemished screenshot
     let editingCardId = null;
 
     function setTool(tool) {
@@ -237,99 +263,59 @@
       document.querySelectorAll('#markup-toolbar .tool-btn').forEach(btn => btn.classList.remove('active'));
       const activeBtn = document.getElementById(`tool-${tool}`);
       if (activeBtn) activeBtn.classList.add('active');
+      
+      drawingCanvas.classList.toggle('eraser-mode', tool === 'eraser');
     }
 
-    function openMarkupModal(imgDataUrl, cardId = null) {
+    function openMarkupModal(originalBaseImg, existingShapes = [], noteText = "", cardId = null) {
       editingCardId = cardId;
-      historyStack = [];
-      
-      if (cardId) {
-        const card = cards.find(c => c.id === cardId);
-        modalNoteInput.value = card ? card.note : "";
-      } else {
-        modalNoteInput.value = "";
-      }
+      rawBaseImageSrc = originalBaseImg;
+      currentShapesList = JSON.parse(JSON.stringify(existingShapes));
+      modalNoteInput.value = noteText;
 
-      baseImage = new Image();
-      baseImage.src = imgDataUrl;
-      baseImage.onload = () => {
-        markupCanvas.width = baseImage.width;
-        markupCanvas.height = baseImage.height;
-        markupCtx.drawImage(baseImage, 0, 0);
-        saveState();
+      const img = new Image();
+      img.src = originalBaseImg;
+      img.onload = () => {
+        baseCanvas.width = img.width;
+        baseCanvas.height = img.height;
+        drawingCanvas.width = img.width;
+        drawingCanvas.height = img.height;
+
+        // Render base screenshot layer
+        baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+        baseCtx.drawImage(img, 0, 0);
+
+        // Render vector drawing layer
+        redrawVectorLayer();
         markupModal.classList.add('active');
       };
     }
 
-    function saveState() {
-      historyStack.push(markupCtx.getImageData(0, 0, markupCanvas.width, markupCanvas.height));
+    function redrawVectorLayer() {
+      drawCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+      currentShapesList.forEach(shape => drawSingleShape(drawCtx, shape));
     }
 
-    function undoMarkup() {
-      if (historyStack.length > 1) {
-        historyStack.pop();
-        const prevState = historyStack[historyStack.length - 1];
-        markupCtx.putImageData(prevState, 0, 0);
-      }
-    }
+    function drawSingleShape(ctx, shape) {
+      ctx.strokeStyle = shape.color;
+      ctx.lineWidth = shape.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
 
-    function closeMarkupModal() {
-      markupModal.classList.remove('active');
-      editingCardId = null;
-    }
-
-    function getCanvasCoords(e) {
-      const rect = markupCanvas.getBoundingClientRect();
-      return {
-        x: (e.clientX - rect.left) * (markupCanvas.width / rect.width),
-        y: (e.clientY - rect.top) * (markupCanvas.height / rect.height)
-      };
-    }
-
-    markupCanvas.addEventListener('mousedown', (e) => {
-      isDrawing = true;
-      const coords = getCanvasCoords(e);
-      drawStartX = coords.x;
-      drawStartY = coords.y;
-      if (currentTool === 'pen') {
-        markupCtx.beginPath();
-        markupCtx.moveTo(drawStartX, drawStartY);
-      }
-    });
-
-    markupCanvas.addEventListener('mousemove', (e) => {
-      if (!isDrawing) return;
-      const coords = getCanvasCoords(e);
-      const color = document.getElementById('draw-color').value;
-      const width = parseInt(document.getElementById('draw-width').value);
-
-      if (currentTool === 'pen') {
-        markupCtx.strokeStyle = color;
-        markupCtx.lineWidth = width;
-        markupCtx.lineCap = 'round';
-        markupCtx.lineTo(coords.x, coords.y);
-        markupCtx.stroke();
-      } else {
-        const lastState = historyStack[historyStack.length - 1];
-        markupCtx.putImageData(lastState, 0, 0);
-        markupCtx.strokeStyle = color;
-        markupCtx.lineWidth = width;
-        markupCtx.fillStyle = color;
-
-        if (currentTool === 'rect') {
-          markupCtx.strokeRect(drawStartX, drawStartY, coords.x - drawStartX, coords.y - drawStartY);
-        } else if (currentTool === 'arrow') {
-          drawArrow(drawStartX, drawStartY, coords.x, coords.y, markupCtx, width, color);
+      if (shape.type === 'pen') {
+        if (shape.points.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(shape.points[0].x, shape.points[0].y);
+        for (let i = 1; i < shape.points.length; i++) {
+          ctx.lineTo(shape.points[i].x, shape.points[i].y);
         }
+        ctx.stroke();
+      } else if (shape.type === 'rect') {
+        ctx.strokeRect(shape.x, shape.y, shape.w, shape.h);
+      } else if (shape.type === 'arrow') {
+        drawArrow(shape.x1, shape.y1, shape.x2, shape.y2, ctx, shape.width, shape.color);
       }
-    });
-
-    window.addEventListener('mouseup', () => {
-      if (isDrawing) {
-        isDrawing = false;
-        saveState();
-      }
-    });
+    }
 
     function drawArrow(fromx, fromy, tox, toy, ctx, width, color) {
       const headlen = width * 4 + 8;
@@ -350,31 +336,148 @@
       ctx.fill();
     }
 
+    function undoMarkup() {
+      if (currentShapesList.length > 0) {
+        currentShapesList.pop();
+        redrawVectorLayer();
+      }
+    }
+
+    function clearAllDrawings() {
+      currentShapesList = [];
+      redrawVectorLayer();
+    }
+
+    function closeMarkupModal() {
+      markupModal.classList.remove('active');
+      editingCardId = null;
+    }
+
+    function getCanvasCoords(e) {
+      const rect = drawingCanvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left) * (drawingCanvas.width / rect.width),
+        y: (e.clientY - rect.top) * (drawingCanvas.height / rect.height)
+      };
+    }
+
+    function eraseAtPoint(x, y) {
+      const threshold = 18;
+      const initialCount = currentShapesList.length;
+      
+      currentShapesList = currentShapesList.filter(shape => {
+        if (shape.type === 'pen') {
+          return !shape.points.some(p => Math.hypot(p.x - x, p.y - y) < threshold);
+        } else if (shape.type === 'rect') {
+          const inX = x >= Math.min(shape.x, shape.x + shape.w) - threshold && x <= Math.max(shape.x, shape.x + shape.w) + threshold;
+          const inY = y >= Math.min(shape.y, shape.y + shape.h) - threshold && y <= Math.max(shape.y, shape.y + shape.h) + threshold;
+          return !(inX && inY);
+        } else if (shape.type === 'arrow') {
+          const d1 = Math.hypot(shape.x1 - x, shape.y1 - y);
+          const d2 = Math.hypot(shape.x2 - x, shape.y2 - y);
+          const lineLen = Math.hypot(shape.x2 - shape.x1, shape.y2 - shape.y1);
+          return (d1 + d2) > (lineLen + threshold);
+        }
+        return true;
+      });
+
+      if (currentShapesList.length !== initialCount) {
+        redrawVectorLayer();
+      }
+    }
+
+    drawingCanvas.addEventListener('mousedown', (e) => {
+      isDrawing = true;
+      const coords = getCanvasCoords(e);
+      const color = document.getElementById('draw-color').value;
+      const width = parseInt(document.getElementById('draw-width').value);
+
+      if (currentTool === 'eraser') {
+        eraseAtPoint(coords.x, coords.y);
+      } else if (currentTool === 'pen') {
+        currentShape = { type: 'pen', points: [coords], color, width };
+      } else if (currentTool === 'rect') {
+        currentShape = { type: 'rect', startX: coords.x, startY: coords.y, x: coords.x, y: coords.y, w: 0, h: 0, color, width };
+      } else if (currentTool === 'arrow') {
+        currentShape = { type: 'arrow', x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color, width };
+      }
+    });
+
+    drawingCanvas.addEventListener('mousemove', (e) => {
+      if (!isDrawing) return;
+      const coords = getCanvasCoords(e);
+
+      if (currentTool === 'eraser') {
+        eraseAtPoint(coords.x, coords.y);
+      } else if (currentTool === 'pen') {
+        currentShape.points.push(coords);
+        redrawVectorLayer();
+        drawSingleShape(drawCtx, currentShape);
+      } else if (currentTool === 'rect') {
+        currentShape.x = Math.min(currentShape.startX, coords.x);
+        currentShape.y = Math.min(currentShape.startY, coords.y);
+        currentShape.w = Math.abs(coords.x - currentShape.startX);
+        currentShape.h = Math.abs(coords.y - currentShape.startY);
+        redrawVectorLayer();
+        drawSingleShape(drawCtx, currentShape);
+      } else if (currentTool === 'arrow') {
+        currentShape.x2 = coords.x;
+        currentShape.y2 = coords.y;
+        redrawVectorLayer();
+        drawSingleShape(drawCtx, currentShape);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDrawing) {
+        isDrawing = false;
+        if (currentShape && currentTool !== 'eraser') {
+          currentShapesList.push(currentShape);
+          currentShape = null;
+          redrawVectorLayer();
+        }
+      }
+    });
+
+    function generateMergedPreview() {
+      const mergedCanvas = document.createElement('canvas');
+      mergedCanvas.width = baseCanvas.width;
+      mergedCanvas.height = baseCanvas.height;
+      const mCtx = mergedCanvas.getContext('2d');
+      mCtx.drawImage(baseCanvas, 0, 0);
+      mCtx.drawImage(drawingCanvas, 0, 0);
+      return mergedCanvas.toDataURL('image/png');
+    }
+
     function saveMarkupAndFinish() {
-      const markedUpDataUrl = markupCanvas.toDataURL('image/png');
+      const mergedPreviewUrl = generateMergedPreview();
       const updatedNote = modalNoteInput.value.trim() || "Untitled Note";
       const targetCardId = editingCardId;
 
       closeMarkupModal();
 
       if (targetCardId) {
+        // In-place update
         const card = cards.find(c => c.id === targetCardId);
         if (card) {
-          card.img = markedUpDataUrl;
+          card.img = mergedPreviewUrl;
+          card.originalBaseImg = rawBaseImageSrc;
+          card.shapes = JSON.parse(JSON.stringify(currentShapesList));
           card.note = updatedNote;
           
           const cardEl = document.getElementById(`card-${card.id}`);
           if (cardEl) {
             const imgEl = cardEl.querySelector('img');
             const noteEl = cardEl.querySelector('.card-note');
-            if (imgEl) imgEl.src = markedUpDataUrl;
+            if (imgEl) imgEl.src = mergedPreviewUrl;
             if (noteEl) noteEl.innerText = updatedNote;
           }
           saveCards();
           showToast("💾 Changes saved to card!");
         }
       } else {
-        createAndAddCard(markedUpDataUrl, updatedNote);
+        // New card creation
+        createAndAddCard(mergedPreviewUrl, rawBaseImageSrc, currentShapesList, updatedNote);
       }
     }
 
@@ -386,7 +489,7 @@
       if (!card) return;
 
       if (!window.isSecureContext || !navigator.clipboard || !window.ClipboardItem) {
-        alert("⚠️ Clipboard copy requires a local server due to browser security restrictions on file:/// paths.\n\nPlease open this file using VS Code Live Server (http://localhost:5500).");
+        alert("⚠️ Image clipboard copy requires a local server due to browser security restrictions on file:/// paths.\n\nPlease open this file using VS Code Live Server (http://localhost:5500).");
         return;
       }
 
@@ -394,9 +497,7 @@
         const byteString = atob(card.img.split(',')[1]);
         const ab = new ArrayBuffer(byteString.length);
         const ia = new Uint8Array(ab);
-        for (let i = 0; i < byteString.length; i++) {
-          ia[i] = byteString.charCodeAt(i);
-        }
+        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
         const imageBlob = new Blob([ab], { type: 'image/png' });
         const textBlob = new Blob([card.note ? `📝 ${card.note}` : ''], { type: 'text/plain' });
 
@@ -416,9 +517,7 @@
           for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
           const imageBlob = new Blob([ab], { type: 'image/png' });
 
-          await navigator.clipboard.write([
-            new ClipboardItem({ 'image/png': imageBlob })
-          ]);
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': imageBlob })]);
           showToast("📋 Copied image to clipboard! Ready for Slack.");
         } catch (fallbackErr) {
           console.error("Clipboard blocked:", fallbackErr);
@@ -427,7 +526,7 @@
       }
     }
 
-    // Global Key Listener: Paste (Ctrl+V) or Copy Selected (Ctrl+C)
+    // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && selectedCardId) {
         if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
@@ -444,7 +543,7 @@
         if (item.type.indexOf('image') === 0) {
           const blob = item.getAsFile();
           const reader = new FileReader();
-          reader.onload = (event) => openMarkupModal(event.target.result);
+          reader.onload = (event) => openMarkupModal(event.target.result, [], "");
           reader.readAsDataURL(blob);
         }
       }
@@ -468,13 +567,15 @@
       emptyState.style.display = cards.length === 0 ? 'block' : 'none';
     }
 
-    function createAndAddCard(imgDataUrl, note) {
+    function createAndAddCard(mergedImg, originalBaseImg, shapes, note) {
       const spawnX = (-panX + (window.innerWidth / 2)) / scale - 160;
       const spawnY = (-panY + (window.innerHeight / 2)) / scale - 120;
 
       const newCard = {
         id: Date.now().toString(),
-        img: imgDataUrl,
+        img: mergedImg,
+        originalBaseImg: originalBaseImg,
+        shapes: shapes,
         note: note,
         timestamp: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         x: spawnX,
@@ -487,6 +588,12 @@
       renderCard(newCard);
       selectCard(newCard.id);
       updateEmptyState();
+    }
+
+    function editCard(cardId) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+      openMarkupModal(card.originalBaseImg || card.img, card.shapes || [], card.note, card.id);
     }
 
     function editNoteInline(cardId) {
@@ -518,13 +625,14 @@
           </div>
           <div class="card-actions">
             <button class="btn-action btn-copy" title="Copy Image & Note for Slack (Ctrl+C)" onclick="copyCardToClipboardForSlack('${card.id}')">📋 Slack</button>
-            <button class="btn-action" title="Modify Screenshot & Note" onclick="openMarkupModal('${card.img}', '${card.id}')">✏️</button>
+            <button class="btn-action" title="Modify Screenshot & Markups" onclick="editCard('${card.id}')">✏️</button>
             <input type="checkbox" ${card.done ? 'checked' : ''} onchange="toggleDone('${card.id}')">
             <button class="btn-action btn-delete" title="Delete" onclick="deleteCard('${card.id}')">✕</button>
           </div>
         </div>
       `;
 
+      // Drag card
       let isDragging = false, dragStartX, dragStartY;
       el.addEventListener('mousedown', (e) => {
         selectCard(card.id);
@@ -585,42 +693,73 @@
     }
 
     // ==========================================
-    // 📊 5. EXPORT TO GOOGLE SHEETS (APPS SCRIPT WEBHOOK)
+    // 📊 5. EXCEL (.XLSX) EXPORT FOR GOOGLE SHEETS
     // ==========================================
-    async function exportToGoogleSheets() {
+    async function exportToExcelSheet() {
       if (cards.length === 0) {
         alert("Canvas is empty! Add some screenshots first.");
         return;
       }
 
-      let webhookUrl = localStorage.getItem('scratchpad_sheets_webhook');
-      if (!webhookUrl) {
-        webhookUrl = prompt("Enter your Google Apps Script Web App URL (ends with /exec):");
-        if (!webhookUrl) return;
-        localStorage.setItem('scratchpad_sheets_webhook', webhookUrl.trim());
-      }
-
       const btn = document.getElementById('btn-export');
-      btn.innerText = "⏳ Exporting...";
+      btn.innerText = "⏳ Generating File...";
       btn.disabled = true;
 
       try {
-        const payload = JSON.stringify({ tasks: cards });
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Scratchpad Tasks');
 
-        // Use standard POST with fallback for CORS on organization accounts
-        await fetch(webhookUrl, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'payload=' + encodeURIComponent(payload)
-        });
+        worksheet.columns = [
+          { header: 'Status', key: 'status', width: 14 },
+          { header: 'Timestamp', key: 'timestamp', width: 22 },
+          { header: 'Note / Task', key: 'note', width: 35 },
+          { header: 'Screenshot Preview', key: 'preview', width: 32 }
+        ];
 
-        showToast(`✅ Exported ${cards.length} cards to Google Sheets!`);
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+        headerRow.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: '1E293B' }
+        };
+        headerRow.height = 26;
+        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        for (let i = 0; i < cards.length; i++) {
+          const card = cards[i];
+          const rowIndex = i + 2;
+
+          const row = worksheet.addRow({
+            status: card.done ? "Done" : "Pending",
+            timestamp: card.timestamp,
+            note: card.note
+          });
+
+          row.height = 85;
+          row.alignment = { vertical: 'middle', wrapText: true };
+
+          const imageId = workbook.addImage({
+            base64: card.img,
+            extension: 'png',
+          });
+
+          worksheet.addImage(imageId, {
+            tl: { col: 3.1, row: rowIndex - 0.9 },
+            ext: { width: 180, height: 100 }
+          });
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, `Visual_Scratchpad_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+        showToast("✅ Spreadsheet downloaded! Ready for Google Drive import.");
       } catch (err) {
-        console.error("Export error:", err);
-        alert("Export submitted! Check your Google Sheet in a few moments.");
+        console.error(err);
+        alert("Error exporting spreadsheet: " + err.message);
       } finally {
-        btn.innerText = "📊 Export to Google Sheets";
+        btn.innerText = "📊 Export for Google Sheets (.xlsx)";
         btn.disabled = false;
       }
     }
