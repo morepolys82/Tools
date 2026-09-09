@@ -601,7 +601,7 @@
     }
 
     // ==========================================
-    // 📊 3. ONE-CLICK "COPY FOR GOOGLE SHEETS"
+    // 📊 3. GOOGLE DRIVE UPLOAD + GOOGLE SHEETS CLIPBOARD COPY
     // ==========================================
     async function copyForGoogleSheets() {
       if (cards.length === 0) {
@@ -609,40 +609,62 @@
         return;
       }
 
-      // 1. Build formatted Tab-Separated Values (TSV) table for clean Sheets paste
-      let tsvData = "Done\tTimestamp\tNote / Task\tScreenshot Reference\n";
-      
-      cards.forEach((card, index) => {
-        const doneStatus = card.done ? "TRUE" : "FALSE";
-        const cleanNote = card.note.replace(/\t/g, " ").replace(/\r?\n/g, " ");
-        const refName = `snip_row_${index + 1}_${cleanNote.slice(0, 15).replace(/[^a-zA-Z0-9]/g, '_')}.png`;
-        
-        tsvData += `${doneStatus}\t${card.timestamp}\t${cleanNote}\t${refName}\n`;
-      });
+      let driveWebhook = localStorage.getItem('gdrive_uploader_webhook');
+      if (!driveWebhook) {
+        driveWebhook = prompt("Enter your Google Drive Apps Script URL (ends in /exec):");
+        if (!driveWebhook) return;
+        localStorage.setItem('gdrive_uploader_webhook', driveWebhook.trim());
+      }
 
-      // 2. Write to clipboard
+      const btn = document.querySelector('.btn-copy-sheets');
+      btn.innerText = "⏳ Uploading to Drive...";
+      btn.disabled = true;
+
       try {
-        if (navigator.clipboard && window.isSecureContext) {
-          await navigator.clipboard.writeText(tsvData);
-        } else {
-          // Hidden fallback
-          const textArea = document.createElement("textarea");
-          textArea.value = tsvData;
-          textArea.style.position = "fixed";
-          textArea.style.opacity = "0";
-          document.body.appendChild(textArea);
-          textArea.select();
-          document.execCommand('copy');
-          document.body.removeChild(textArea);
+        // 1. Identify cards needing Google Drive upload
+        const unuploaded = cards.filter(c => !c.driveUrl).map(c => ({ id: c.id, base64: c.img }));
+
+        if (unuploaded.length > 0) {
+          const res = await fetch(driveWebhook, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ images: unuploaded })
+          });
+          const result = await res.json();
+          if (result.status === "success") {
+            result.urls.forEach(item => {
+              const card = cards.find(c => c.id === item.id);
+              if (card) {
+                card.driveUrl = item.url;
+                dbSaveCard(card);
+              }
+            });
+          } else {
+            throw new Error(result.message);
+          }
         }
 
-        showToast("📋 Copied Table! Go to Google Sheets, click A1 and press Ctrl+V.");
+        // 2. Build formatted Tab-Separated Values (TSV) with =IMAGE() formulas
+        let tsvData = "Done\tTimestamp\tNote / Task\tScreenshot Preview\n";
+        cards.forEach(card => {
+          const doneStatus = card.done ? "TRUE" : "FALSE";
+          const cleanNote = card.note.replace(/\t/g, " ").replace(/\r?\n/g, " ");
+          const imageFormula = card.driveUrl ? `=IMAGE("${card.driveUrl}", 1)` : "[No Image]";
+          
+          tsvData += `${doneStatus}\t${card.timestamp}\t${cleanNote}\t${imageFormula}\n`;
+        });
+
+        // 3. Write to clipboard
+        await navigator.clipboard.writeText(tsvData);
+        showToast("📋 Copied to Clipboard with Google Drive Images! Paste (Ctrl+V) into cell A1 of Google Sheets.");
       } catch (err) {
-        console.error("Clipboard copy error:", err);
-        window.prompt("Copy your spreadsheet data manually below (Ctrl+C), then paste in Google Sheets:", tsvData);
+        console.error("Google Drive copy error:", err);
+        alert("Upload to Google Drive failed:\n" + err.message);
+      } finally {
+        btn.innerText = "📋 Copy For Sheets";
+        btn.disabled = false;
       }
     }
-
     // ==========================================
     // ✨ 4. STABLE DIFFUSION AI PIPELINE
     // ==========================================
