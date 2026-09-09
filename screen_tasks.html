@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad - Layered Markup & Excel Export</title>
+  <title>Visual Scratchpad - Layered Markup & Aspect-Ratio Excel Export</title>
   
   <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
@@ -72,9 +72,7 @@
     }
     #empty-state h2 { font-size: 1.3rem; margin-bottom: 8px; color: #94a3b8; }
 
-    /* ==========================================
-       🎨 LAYERED MARKUP MODAL
-       ========================================== */
+    /* Layered Markup Modal */
     #markup-modal {
       position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.85);
       backdrop-filter: blur(6px); display: none; flex-direction: column; align-items: center; justify-content: center;
@@ -99,7 +97,6 @@
     .save-btn { background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 700; cursor: pointer; }
     .cancel-btn { background: #64748b; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; }
     
-    /* Dual-Canvas Layer Stack */
     #canvas-container {
       position: relative; max-width: 90vw; max-height: 75vh; overflow: auto;
       border: 2px solid #334155; border-radius: 8px; background: #0b0f19;
@@ -254,8 +251,8 @@
     let currentTool = 'pen';
     let isDrawing = false;
     let currentShape = null;
-    let currentShapesList = []; // Vector shapes on drawing layer
-    let rawBaseImageSrc = null;  // Original unblemished screenshot
+    let currentShapesList = [];
+    let rawBaseImageSrc = null;
     let editingCardId = null;
 
     function setTool(tool) {
@@ -281,11 +278,9 @@
         drawingCanvas.width = img.width;
         drawingCanvas.height = img.height;
 
-        // Render base screenshot layer
         baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
         baseCtx.drawImage(img, 0, 0);
 
-        // Render vector drawing layer
         redrawVectorLayer();
         markupModal.classList.add('active');
       };
@@ -457,7 +452,6 @@
       closeMarkupModal();
 
       if (targetCardId) {
-        // In-place update
         const card = cards.find(c => c.id === targetCardId);
         if (card) {
           card.img = mergedPreviewUrl;
@@ -476,7 +470,6 @@
           showToast("💾 Changes saved to card!");
         }
       } else {
-        // New card creation
         createAndAddCard(mergedPreviewUrl, rawBaseImageSrc, currentShapesList, updatedNote);
       }
     }
@@ -632,7 +625,6 @@
         </div>
       `;
 
-      // Drag card
       let isDragging = false, dragStartX, dragStartY;
       el.addEventListener('mousedown', (e) => {
         selectCard(card.id);
@@ -692,8 +684,17 @@
       localStorage.setItem('scratchpad_cards', JSON.stringify(cards));
     }
 
+    // Helper: Async helper to get natural image dimensions
+    function getImageDimensions(src) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+      });
+    }
+
     // ==========================================
-    // 📊 5. EXCEL (.XLSX) EXPORT FOR GOOGLE SHEETS
+    // 📊 5. ASPECT-RATIO PRESERVING EXCEL EXPORT
     // ==========================================
     async function exportToExcelSheet() {
       if (cards.length === 0) {
@@ -710,10 +711,10 @@
         const worksheet = workbook.addWorksheet('Scratchpad Tasks');
 
         worksheet.columns = [
-          { header: 'Status', key: 'status', width: 14 },
+          { header: 'Done', key: 'status', width: 10 },
           { header: 'Timestamp', key: 'timestamp', width: 22 },
-          { header: 'Note / Task', key: 'note', width: 35 },
-          { header: 'Screenshot Preview', key: 'preview', width: 32 }
+          { header: 'Note / Task', key: 'note', width: 38 },
+          { header: 'Screenshot Preview', key: 'preview', width: 36 }
         ];
 
         const headerRow = worksheet.getRow(1);
@@ -726,19 +727,47 @@
         headerRow.height = 26;
         headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
 
+        const MAX_BOX_WIDTH = 220;
+        const MAX_BOX_HEIGHT = 130;
+
         for (let i = 0; i < cards.length; i++) {
           const card = cards[i];
           const rowIndex = i + 2;
 
+          // 1. Calculate natural 1:1 aspect ratio dimensions
+          const dims = await getImageDimensions(card.img);
+          const aspect = dims.width / dims.height;
+
+          let targetW, targetH;
+          if (aspect >= (MAX_BOX_WIDTH / MAX_BOX_HEIGHT)) {
+            targetW = MAX_BOX_WIDTH;
+            targetH = Math.round(MAX_BOX_WIDTH / aspect);
+          } else {
+            targetH = MAX_BOX_HEIGHT;
+            targetW = Math.round(MAX_BOX_HEIGHT * aspect);
+          }
+
+          // 2. Add Row with Checkbox validation in Column A
           const row = worksheet.addRow({
-            status: card.done ? "Done" : "Pending",
+            status: card.done ? true : false,
             timestamp: card.timestamp,
             note: card.note
           });
 
-          row.height = 85;
+          // Match row height proportionally to image height (with padding)
+          row.height = Math.max(70, Math.round(targetH * 0.75 + 15));
           row.alignment = { vertical: 'middle', wrapText: true };
 
+          // Center checkbox in Column A
+          const statusCell = worksheet.getCell(`A${rowIndex}`);
+          statusCell.alignment = { vertical: 'middle', horizontal: 'center' };
+          statusCell.dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: ['"TRUE,FALSE"']
+          };
+
+          // 3. Embed 1:1 proportional Image into Column D
           const imageId = workbook.addImage({
             base64: card.img,
             extension: 'png',
@@ -746,7 +775,7 @@
 
           worksheet.addImage(imageId, {
             tl: { col: 3.1, row: rowIndex - 0.9 },
-            ext: { width: 180, height: 100 }
+            ext: { width: targetW, height: targetH }
           });
         }
 
@@ -754,7 +783,7 @@
         const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         saveAs(blob, `Visual_Scratchpad_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
 
-        showToast("✅ Spreadsheet downloaded! Ready for Google Drive import.");
+        showToast("✅ Spreadsheet downloaded with original aspect ratios & checkboxes!");
       } catch (err) {
         console.error(err);
         alert("Error exporting spreadsheet: " + err.message);
