@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad 1 - Layered Markup, Excel & Sheets Sync</title>
+  <title>Visual Scratchpad1 - Layered Markup, Excel & Sheets Sync</title>
 
   <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
@@ -22,7 +22,7 @@
     .shortcuts { font-size: 0.8rem; color: #cbd5e1; display: flex; gap: 8px; }
     .shortcuts kbd { background: #1e293b; border: 1px solid #475569; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-weight: 600; color: #f8fafc; }
     
-    .btn-header { background: #10b981; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
+    .btn-header { background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
     .btn-header:hover { background: #059669; }
     .btn-excel { background: #0284c7; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
     .btn-excel:hover { background: #0369a1; }
@@ -143,7 +143,7 @@
     <button class="btn-ai-cfg" onclick="configureHfToken()" title="Set or update your Hugging Face API token">🔑 HF Token</button>
     <button class="btn-danger" onclick="clearCanvas()">🗑️ Clear All</button>
     <div class="shortcuts">
-      <span>Snip: <kbd>Win+Shift+S</kbd> / <kbd>Cmd+Shift+4</kbd></span>
+      <span>Snip: <kbd>Win+Shift+S</kbd></span>
       <span>Paste: <kbd>Ctrl+V</kbd></span>
       <span>Slack: <kbd>Select + Ctrl+C</kbd></span>
     </div>
@@ -235,6 +235,11 @@
   </div>
 
   <script>
+    // ==========================================
+    // 🌐 HARDCODED GOOGLE APPS SCRIPT WEBHOOK URL
+    // ==========================================
+    const DEFAULT_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzMcG8o9IH8H77mlOKdlQydUAKOIlxRx6hCCWaRPtPJaVtGFQL9xBkfmMfgfkdn0rtw-Q/exec";
+
     // ==========================================
     // 💽 0. UNLIMITED INDEXEDDB STORAGE ENGINE
     // ==========================================
@@ -610,13 +615,7 @@
         return;
       }
 
-      let webhookUrl = localStorage.getItem('scratchpad_sheets_webhook');
-      if (!webhookUrl) {
-        webhookUrl = prompt("Enter your Google Apps Script Web App URL (ends with /exec):");
-        if (!webhookUrl) return;
-        localStorage.setItem('scratchpad_sheets_webhook', webhookUrl.trim());
-      }
-
+      const webhookUrl = DEFAULT_SHEETS_WEBHOOK_URL;
       const btn = document.getElementById('btn-export');
       btn.innerText = "⏳ Exporting to Sheets...";
       btn.disabled = true;
@@ -631,7 +630,7 @@
           body: 'payload=' + encodeURIComponent(payload)
         });
 
-        showToast(`✅ Exported ${cards.length} cards to Google Sheets!`);
+        showToast(`✅ Exported ${cards.length} cards directly to Google Sheets!`);
       } catch (err) {
         console.error("Export error:", err);
         alert("Export submitted! Check your Google Sheet in a few moments.");
@@ -666,7 +665,7 @@
         const workbook = new ExcelJS.Workbook();
         const worksheet = workbook.addWorksheet('Tasks');
 
-        // Required Columns: Status, Date, Description, Thumbnail Image
+        // Columns matching Google Sheets: Status, Date, Description, Thumbnail Image
         worksheet.columns = [
           { header: 'Status', key: 'status', width: 12 },
           { header: 'Date', key: 'date', width: 22 },
@@ -712,7 +711,7 @@
             description: card.note
           });
 
-          // Proportional row height based on image thumbnail height
+          // Proportional row height
           row.height = Math.max(70, Math.round(targetH * 0.75 + 15));
           row.alignment = { vertical: 'middle', wrapText: true };
 
@@ -807,7 +806,7 @@
       submitBtn.disabled = true;
 
       try {
-        const pureBase64 = card.img.includes(',') ? card.img.split(',')[1] : card.img;
+        const pureBase64 = card.img.includes(',') ? card.img.split(',') : card.img;
 
         const payload = {
           inputs: pureBase64,
@@ -894,7 +893,7 @@
       }
 
       try {
-        const byteString = atob(card.img.split(',')[1]);
+        const byteString = atob(card.img.split(','));
         const ab = new ArrayBuffer(byteString.length);
         const ia = new Uint8Array(ab);
         for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
@@ -911,7 +910,7 @@
       } catch (err) {
         console.warn("Multi-mime copy failed, trying image-only copy:", err);
         try {
-          const byteString = atob(card.img.split(',')[1]);
+          const byteString = atob(card.img.split(','));
           const ab = new ArrayBuffer(byteString.length);
           const ia = new Uint8Array(ab);
           for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
