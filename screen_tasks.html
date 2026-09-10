@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad</title>
+  <title>Visual Scratchpad v1.1</title>
 
   <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
@@ -955,23 +955,59 @@
       }
     });
 
-    // Global Paste Listener
+    // ================================================
+    // 📋 6. SMART PASTE HANDLER (NEW & INTEGRATED)
+    // ================================================
     window.addEventListener('paste', (e) => {
-      if (markupModal.classList.contains('active')) return;
-      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-      for (const item of items) {
-        if (item.type.indexOf('image') === 0) {
-          const blob = item.getAsFile();
-          const reader = new FileReader();
-          reader.onload = (event) => openMarkupModal(event.target.result, [], "");
-          reader.readAsDataURL(blob);
-          e.preventDefault();
+        if (markupModal.classList.contains('active')) return;
+
+        let imageFile = null;
+        let textContent = '';
+        let items = e.clipboardData.items;
+
+        // Use a counter to know when all async 'getAsString' calls are done
+        let itemsToProcess = items.length;
+        let processedItems = 0;
+
+        const onDoneProcessing = () => {
+            if (!imageFile) return; // Must have an image
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                // If a URL was found, bypass markup and create card directly
+                if (textContent.startsWith('http')) {
+                    createAndAddCard(event.target.result, event.target.result, [], textContent);
+                } else {
+                    // Otherwise, open markup editor with the found text (or empty)
+                    openMarkupModal(event.target.result, [], textContent);
+                }
+            };
+            reader.readAsDataURL(imageFile);
+        };
+        
+        if(items.length === 0) return;
+
+        for (let item of items) {
+            if (item.type.indexOf('image') === 0) {
+                imageFile = item.getAsFile();
+            } else if (item.type === 'text/plain') {
+                item.getAsString(text => {
+                    textContent = text;
+                    processedItems++;
+                    if (processedItems === itemsToProcess) onDoneProcessing();
+                });
+                continue; // Continue to next item without incrementing below
+            }
+            processedItems++;
         }
-      }
+        
+        // If no text items were found, call done immediately
+        if (processedItems === itemsToProcess) onDoneProcessing();
     });
 
+
     // ==========================================
-    // 🗂️ 6. TASK CARD LOGIC
+    // 🗂️ 7. TASK CARD LOGIC
     // ==========================================
     function selectCard(cardId) {
       selectedCardId = cardId;
