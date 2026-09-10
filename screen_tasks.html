@@ -2,11 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad - Copy For Sheets & Stable Diffusion v1</title>
-  
-  <!-- ExcelJS & FileSaver for Spreadsheet Generation with Embedded Images -->
-  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+  <title>Visual Scratchpad - Layered Markup & Google Sheets Sync</title>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -22,9 +18,7 @@
     .shortcuts { font-size: 0.8rem; color: #cbd5e1; display: flex; gap: 8px; }
     .shortcuts kbd { background: #1e293b; border: 1px solid #475569; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-weight: 600; color: #f8fafc; }
     
-    .btn-copy-sheets { background: #0284c7; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
-    .btn-copy-sheets:hover { background: #0369a1; }
-    .btn-header { background: #10b981; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
+    .btn-header { background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
     .btn-header:hover { background: #059669; }
     .btn-ai-cfg { background: #8b5cf6; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; }
     .btn-ai-cfg:hover { background: #7c3aed; }
@@ -138,18 +132,18 @@
   <!-- Controls -->
   <div id="toolbar">
     <span class="badge">SCRATCHPAD</span>
-    <button class="btn-copy-sheets" onclick="copyForGoogleSheets()" title="Copy all cards formatted for Google Sheets pasting">📋 Copy For Sheets</button>
-    <button class="btn-header" id="btn-export" onclick="exportToExcelSheet()" title="Download as .xlsx with embedded images">📊 Export (.xlsx)</button>
+    <button class="btn-header" id="btn-export" onclick="exportToGoogleSheets()" title="Directly sync all cards to your Google Sheet">📊 Export to Google Sheets</button>
     <button class="btn-ai-cfg" onclick="configureHfToken()" title="Set or update your Hugging Face API token">🔑 HF Token</button>
     <button class="btn-danger" onclick="clearCanvas()">🗑️ Clear All</button>
     <div class="shortcuts">
-      <span>Snip: <kbd>Win+Shift+S</kbd></span>
+      <span>Snip: <kbd>Win+Shift+S</kbd> / <kbd>Cmd+Shift+4</kbd></span>
       <span>Paste: <kbd>Ctrl+V</kbd></span>
+      <span>Slack: <kbd>Select + Ctrl+C</kbd></span>
     </div>
   </div>
 
   <!-- Toast Notification -->
-  <div id="toast">📋 Copied Table to Clipboard! Paste (Ctrl+V) in cell A1 of Google Sheets.</div>
+  <div id="toast">📋 Toast Notification</div>
 
   <!-- Canvas Surface -->
   <div id="viewport">
@@ -601,70 +595,46 @@
     }
 
     // ==========================================
-    // 📊 3. GOOGLE DRIVE UPLOAD + GOOGLE SHEETS CLIPBOARD COPY
+    // 📊 3. DIRECT GOOGLE SHEETS WEBHOOK EXPORT
     // ==========================================
-    async function copyForGoogleSheets() {
+    async function exportToGoogleSheets() {
       if (cards.length === 0) {
         alert("Canvas is empty! Add some screenshots first.");
         return;
       }
 
-      let driveWebhook = localStorage.getItem('gdrive_uploader_webhook');
-      if (!driveWebhook) {
-        driveWebhook = prompt("Enter your Google Drive Apps Script URL (ends in /exec):");
-        if (!driveWebhook) return;
-        localStorage.setItem('gdrive_uploader_webhook', driveWebhook.trim());
+      let webhookUrl = localStorage.getItem('scratchpad_sheets_webhook');
+      if (!webhookUrl) {
+        webhookUrl = prompt("Enter your Google Apps Script Web App URL (ends with /exec):");
+        if (!webhookUrl) return;
+        localStorage.setItem('scratchpad_sheets_webhook', webhookUrl.trim());
       }
 
-      const btn = document.querySelector('.btn-copy-sheets');
-      btn.innerText = "⏳ Uploading to Drive...";
+      const btn = document.getElementById('btn-export');
+      btn.innerText = "⏳ Exporting to Sheets...";
       btn.disabled = true;
 
       try {
-        // 1. Identify cards needing Google Drive upload
-        const unuploaded = cards.filter(c => !c.driveUrl).map(c => ({ id: c.id, base64: c.img }));
+        const payload = JSON.stringify({ tasks: cards });
 
-        if (unuploaded.length > 0) {
-          const res = await fetch(driveWebhook, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ images: unuploaded })
-          });
-          const result = await res.json();
-          if (result.status === "success") {
-            result.urls.forEach(item => {
-              const card = cards.find(c => c.id === item.id);
-              if (card) {
-                card.driveUrl = item.url;
-                dbSaveCard(card);
-              }
-            });
-          } else {
-            throw new Error(result.message);
-          }
-        }
-
-        // 2. Build formatted Tab-Separated Values (TSV) with =IMAGE() formulas
-        let tsvData = "Done\tTimestamp\tNote / Task\tScreenshot Preview\n";
-        cards.forEach(card => {
-          const doneStatus = card.done ? "TRUE" : "FALSE";
-          const cleanNote = card.note.replace(/\t/g, " ").replace(/\r?\n/g, " ");
-          const imageFormula = card.driveUrl ? `=IMAGE("${card.driveUrl}", 1)` : "[No Image]";
-          
-          tsvData += `${doneStatus}\t${card.timestamp}\t${cleanNote}\t${imageFormula}\n`;
+        // Uses standard POST with no-cors support to bypass Workspace OAuth redirect headers
+        await fetch(webhookUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'payload=' + encodeURIComponent(payload)
         });
 
-        // 3. Write to clipboard
-        await navigator.clipboard.writeText(tsvData);
-        showToast("📋 Copied to Clipboard with Google Drive Images! Paste (Ctrl+V) into cell A1 of Google Sheets.");
+        showToast(`✅ Exported ${cards.length} cards to Google Sheets!`);
       } catch (err) {
-        console.error("Google Drive copy error:", err);
-        alert("Upload to Google Drive failed:\n" + err.message);
+        console.error("Export error:", err);
+        alert("Export submitted! Check your Google Sheet in a few moments.");
       } finally {
-        btn.innerText = "📋 Copy For Sheets";
+        btn.innerText = "📊 Export to Google Sheets";
         btn.disabled = false;
       }
     }
+
     // ==========================================
     // ✨ 4. STABLE DIFFUSION AI PIPELINE
     // ==========================================
@@ -999,109 +969,6 @@
         selectedCardId = null;
         dbClearCards();
         updateEmptyState();
-      }
-    }
-
-    function getImageDimensions(src) {
-      return new Promise((resolve) => {
-        const img = new Image();
-        img.src = src;
-        img.onload = () => resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
-      });
-    }
-
-    // ==========================================
-    // 📊 7. ASPECT-RATIO PRESERVING EXCEL EXPORT
-    // ==========================================
-    async function exportToExcelSheet() {
-      if (cards.length === 0) {
-        alert("Canvas is empty! Add some screenshots first.");
-        return;
-      }
-
-      const btn = document.getElementById('btn-export');
-      btn.innerText = "⏳ Generating File...";
-      btn.disabled = true;
-
-      try {
-        const workbook = new ExcelJS.Workbook();
-        const worksheet = workbook.addWorksheet('Scratchpad Tasks');
-
-        worksheet.columns = [
-          { header: 'Done', key: 'status', width: 10 },
-          { header: 'Timestamp', key: 'timestamp', width: 22 },
-          { header: 'Note / Task', key: 'note', width: 38 },
-          { header: 'Screenshot Preview', key: 'preview', width: 36 }
-        ];
-
-        const headerRow = worksheet.getRow(1);
-        headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
-        headerRow.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: '1E293B' }
-        };
-        headerRow.height = 26;
-        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
-
-        const MAX_BOX_WIDTH = 220;
-        const MAX_BOX_HEIGHT = 130;
-
-        for (let i = 0; i < cards.length; i++) {
-          const card = cards[i];
-          const rowIndex = i + 2;
-
-          const dims = await getImageDimensions(card.img);
-          const aspect = dims.width / dims.height;
-
-          let targetW, targetH;
-          if (aspect >= (MAX_BOX_WIDTH / MAX_BOX_HEIGHT)) {
-            targetW = MAX_BOX_WIDTH;
-            targetH = Math.round(MAX_BOX_WIDTH / aspect);
-          } else {
-            targetH = MAX_BOX_HEIGHT;
-            targetW = Math.round(MAX_BOX_HEIGHT * aspect);
-          }
-
-          const row = worksheet.addRow({
-            status: card.done ? true : false,
-            timestamp: card.timestamp,
-            note: card.note
-          });
-
-          row.height = Math.max(70, Math.round(targetH * 0.75 + 15));
-          row.alignment = { vertical: 'middle', wrapText: true };
-
-          const statusCell = worksheet.getCell(`A${rowIndex}`);
-          statusCell.alignment = { vertical: 'middle', horizontal: 'center' };
-          statusCell.dataValidation = {
-            type: 'list',
-            allowBlank: true,
-            formulae: ['"TRUE,FALSE"']
-          };
-
-          const imageId = workbook.addImage({
-            base64: card.img,
-            extension: 'png',
-          });
-
-          worksheet.addImage(imageId, {
-            tl: { col: 3.1, row: rowIndex - 0.9 },
-            ext: { width: targetW, height: targetH }
-          });
-        }
-
-        const buffer = await workbook.xlsx.writeBuffer();
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        saveAs(blob, `Visual_Scratchpad_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
-
-        showToast("✅ Spreadsheet downloaded! Ready for Google Drive.");
-      } catch (err) {
-        console.error(err);
-        alert("Error exporting spreadsheet: " + err.message);
-      } finally {
-        btn.innerText = "📊 Export (.xlsx)";
-        btn.disabled = false;
       }
     }
 
