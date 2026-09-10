@@ -2,93 +2,224 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad v1.5</title>
+  <title>Visual Scratchpad v1.6</title>
 
   <!-- Firebase SDKs for Real-Time Multiplayer Sync -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-  <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation -->
+  <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body, html { width: 100%; height: 100%; overflow: hidden; background: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #f8fafc; }
+
+    /* Top Floating Header */
     #toolbar {
       position: fixed; top: 16px; left: 16px; z-index: 100;
       display: flex; align-items: center; gap: 8px; background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(8px);
       padding: 8px 16px; border-radius: 10px; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
     }
-    .badge { background: #3b82f6; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 0.75rem; }
+    .badge { background: #3b82f6; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.5px; }
     .room-badge { background: #6366f1; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem; }
-    .shortcuts kbd { background: #1e293b; border: 1px solid #475569; padding: 2px 6px; border-radius: 4px; }
-    .btn-danger { background: #ef4444; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.15s ease; }
+    .shortcuts { font-size: 0.8rem; color: #cbd5e1; display: flex; gap: 8px; }
+    .shortcuts kbd { background: #1e293b; border: 1px solid #475569; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-weight: 600; color: #f8fafc; }
+    
+    .btn-header { background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
+    .btn-header:hover { background: #059669; }
+    .btn-excel { background: #0284c7; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
+    .btn-excel:hover { background: #0369a1; }
+    .btn-danger { background: #ef4444; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; }
     .btn-danger:hover { background: #dc2626; }
+
+    /* Toast Notification */
     #toast {
       position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
       background: #10b981; color: white; padding: 10px 20px; border-radius: 8px;
-      font-weight: 600; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-      opacity: 0; pointer-events: none; transition: all 0.2s ease; z-index: 2000;
+      font-weight: 600; font-size: 0.9rem; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 2000; text-align: center;
     }
     #toast.show { opacity: 1; transform: translate(-50%, -8px); }
+
+    /* Infinite Canvas Viewport */
     #viewport { width: 100vw; height: 100vh; position: relative; cursor: grab; }
     #viewport.panning { cursor: grabbing; }
     #world { position: absolute; top: 0; left: 0; transform-origin: 0 0; width: 0; height: 0; }
+
+    /* Task Cards */
     .card {
       position: absolute; background: #1e293b; border: 2px solid #334155; border-radius: 10px;
       padding: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); cursor: move; display: flex; flex-direction: column;
-      width: max-content; max-width: 480px; transition: opacity 0.15s, filter 0.15s, border-color 0.15s;
+      width: max-content; max-width: 480px; transition: opacity 0.15s ease, filter 0.15s ease, border-color 0.15s ease;
     }
     .card.selected { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4), 0 10px 25px rgba(0,0,0,0.6); }
     .card.done { opacity: 0.45; filter: grayscale(0.8); }
     .card img { max-width: 100%; max-height: 320px; border-radius: 6px; border: 1px solid #334155; pointer-events: none; }
     .card-footer { margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
-    .card-note { font-size: 0.95rem; font-weight: 600; word-break: break-word; margin-right: 12px; cursor: text; user-select: text; border-radius: 4px; padding: 2px 4px; }
+    .card-note { font-size: 0.95rem; font-weight: 600; word-break: break-word; margin-right: 12px; cursor: text; user-select: text; border-radius: 4px; padding: 2px 4px; transition: background 0.15s; }
     .card-note:hover { background: rgba(255,255,255,0.06); }
     .card-meta { font-size: 0.7rem; color: #94a3b8; margin-top: 4px; }
     .card-actions { display: flex; gap: 6px; align-items: center; }
+    .card-actions input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+    
     .btn-action { background: none; border: none; color: #94a3b8; padding: 3px 6px; font-size: 0.85rem; cursor: pointer; border-radius: 4px; text-decoration: none; }
     .btn-action:hover { background: rgba(255,255,255,0.1); color: #f8fafc; }
     .btn-copy { color: #60a5fa; font-weight: 600; }
+    .btn-copy:hover { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
     .btn-delete { color: #ef4444; }
-    #empty-state { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; color: #64748b; }
-    #markup-modal { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); display: none; flex-direction: column; align-items: center; justify-content: center; }
+    .btn-delete:hover { background: rgba(239, 68, 68, 0.2); }
+
+    /* Paste Guide Banner */
+    #empty-state {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      text-align: center; color: #64748b; pointer-events: none;
+    }
+    #empty-state h2 { font-size: 1.3rem; margin-bottom: 8px; color: #94a3b8; }
+
+    /* Layered Markup Modal */
+    #markup-modal {
+      position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(6px); display: none; flex-direction: column; align-items: center; justify-content: center;
+    }
     #markup-modal.active { display: flex; }
-    #markup-toolbar { display: flex; gap: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-    .tool-btn { background: #334155; border: 1px solid #475569; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; }
+    
+    #markup-toolbar {
+      display: flex; gap: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+      padding: 8px 14px; margin-bottom: 12px; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      max-width: 95vw; flex-wrap: wrap; justify-content: center;
+    }
+    .tool-btn { background: #334155; border: 1px solid #475569; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 4px; }
     .tool-btn.active { background: #3b82f6; border-color: #60a5fa; }
-    .save-btn { background: #10b981; } .cancel-btn { background: #64748b; }
-    #canvas-container { position: relative; max-width: 90vw; max-height: 75vh; border: 2px solid #334155; border-radius: 8px; }
+    .tool-btn.select-tool.active { background: #6366f1; border-color: #818cf8; }
+    .tool-btn.eraser.active { background: #f59e0b; border-color: #fbbf24; }
+    
+    #modal-note-input {
+      background: #0f172a; border: 1px solid #475569; color: white; padding: 6px 10px;
+      border-radius: 6px; font-size: 0.85rem; width: 220px; outline: none;
+    }
+    #modal-note-input:focus { border-color: #3b82f6; }
+
+    .save-btn { background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 700; cursor: pointer; }
+    .cancel-btn { background: #64748b; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    
+    #canvas-container {
+      position: relative; max-width: 90vw; max-height: 75vh; overflow: auto;
+      border: 2px solid #334155; border-radius: 8px; background: #0b0f19;
+    }
+    #canvas-wrapper { position: relative; display: inline-block; }
+    #base-canvas { display: block; }
     #drawing-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
-    .cursor { position: absolute; transition: transform 0.1s linear; pointer-events: none; top:0; left:0; }
-    .cursor-svg { width: 24px; height: 24px; }
-    .cursor-label { position: absolute; top: 20px; left: 16px; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; color: white; white-space: nowrap; }
+    #drawing-canvas.select-mode { cursor: default; }
+    #drawing-canvas.moving-mode { cursor: move; }
+    #drawing-canvas.eraser-mode { cursor: cell; }
+
+    /* Multiplayer Cursors */
+    .remote-cursor {
+      position: absolute;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      z-index: 9999;
+      transition: transform 0.08s ease-out;
+    }
+    .remote-cursor-svg {
+      width: 20px;
+      height: 20px;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+    }
+    .remote-cursor-label {
+      position: absolute;
+      top: 16px;
+      left: 12px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #000;
+      white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
   </style>
 </head>
 <body tabindex="0">
+
+  <!-- Controls -->
   <div id="toolbar">
     <span class="badge">SCRATCHPAD</span>
     <span class="room-badge" id="room-indicator">Room: general</span>
+    <button class="btn-header" id="btn-export" onclick="exportToGoogleSheets()" title="Directly sync all cards to your Google Sheet">📊 Export to Google Sheets</button>
+    <button class="btn-excel" id="btn-export-excel" onclick="exportToExcelSheet()" title="Download Excel .xlsx with embedded thumbnails in cells">📥 Export Excel (.xlsx)</button>
     <button class="btn-danger" onclick="clearCanvas()">🗑️ Clear All</button>
+    <div class="shortcuts">
+      <span>Snip: <kbd>Win+Shift+S</kbd></span>
+      <span>Paste: <kbd>Ctrl+V</kbd></span>
+      <span>Slack: <kbd>Select + Ctrl+C</kbd></span>
+    </div>
   </div>
-  <div id="toast"></div>
+
+  <!-- Toast Notification -->
+  <div id="toast">📋 Toast Notification</div>
+
+  <!-- Canvas Surface -->
   <div id="viewport">
-    <div id="empty-state"><h2>📌 Canvas is empty</h2><p>Snip any screen region, then press <b>Ctrl + V</b> to paste.</p></div>
+    <div id="empty-state">
+      <h2>📌 Canvas is empty</h2>
+      <p>Snip any screen region, then press <b>Ctrl + V</b> anywhere here to mark it up and add a note.</p>
+    </div>
     <div id="world"></div>
   </div>
+
+  <!-- Layered Markup Modal -->
   <div id="markup-modal">
     <div id="markup-toolbar">
-      <input type="text" id="modal-note-input" placeholder="Task / Note description...">
-      <button class="save-btn" onclick="saveMarkupAndFinish()">💾 Save</button>
+      <button class="tool-btn select-tool" id="tool-select" onclick="setTool('select')" title="Select, move, or modify any drawn markups/texts">↖️ Select / Move</button>
+      
+      <span style="color: #64748b;">|</span>
+
+      <button class="tool-btn active" id="tool-pen" onclick="setTool('pen')" title="Freehand pen">✏️ Pen</button>
+      <button class="tool-btn" id="tool-arrow" onclick="setTool('arrow')" title="Arrow pointer">↗️ Arrow</button>
+      <button class="tool-btn" id="tool-rect" onclick="setTool('rect')" title="Rectangle box">🔲 Box</button>
+      <button class="tool-btn" id="tool-text" onclick="setTool('text')" title="Callout text box (Click to place)">🔤 Text Box</button>
+      <button class="tool-btn eraser" id="tool-eraser" onclick="setTool('eraser')" title="Click drawings to erase">🧹 Eraser</button>
+      
+      <span style="color: #64748b;">|</span>
+      
+      <input type="color" id="draw-color" value="#10b981" title="Color" style="cursor: pointer; border: none; width: 28px; height: 28px; border-radius: 4px; background: none;">
+      <select id="draw-width" style="background: #334155; color: white; border: 1px solid #475569; padding: 4px 6px; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">
+        <option value="2">Thin (2px)</option>
+        <option value="4" selected>Medium (4px)</option>
+        <option value="8">Thick (8px)</option>
+      </select>
+      
+      <span style="color: #64748b;">|</span>
+      
+      <button class="tool-btn" onclick="undoMarkup()" title="Undo last shape">↩️ Undo</button>
+      <button class="tool-btn" onclick="clearAllDrawings()" title="Clear all drawings from this image">🗑️ Clear Markups</button>
+      
+      <span style="color: #64748b;">|</span>
+
+      <input type="text" id="modal-note-input" placeholder="Task / Note description..." title="Edit note attached to this screenshot">
+
+      <button class="save-btn" onclick="saveMarkupAndFinish()">💾 Save Changes</button>
       <button class="cancel-btn" onclick="closeMarkupModal()">Cancel</button>
     </div>
-    <div id="canvas-container"><canvas id="base-canvas"></canvas><canvas id="drawing-canvas"></canvas></div>
+
+    <!-- Dual Canvas Layers -->
+    <div id="canvas-container">
+      <div id="canvas-wrapper">
+        <canvas id="base-canvas"></canvas>
+        <canvas id="drawing-canvas"></canvas>
+      </div>
+    </div>
   </div>
 
   <script>
     // =========================================================================
-    // 🌐 1. FIREBASE REALTIME MULTIPLAYER CONFIGURATION
+    // 🌐 0. FIREBASE REALTIME MULTIPLAYER CONFIGURATION
+    // Replace with your project credentials from Firebase Console
     // =========================================================================
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
@@ -102,244 +233,217 @@ const firebaseConfig = {
   measurementId: "G-H4K67PJ3N1"
 };
 
+    // Determine Room from URL Hash (#room=projectAlpha)
     const hashParams = new URLSearchParams(window.location.hash.slice(1));
     const currentRoom = hashParams.get('room') || 'general';
     document.getElementById('room-indicator').innerText = `Room: ${currentRoom}`;
 
-    let dbRef, cursorsRef, cards = [], cursors = {};
+    let dbRef = null;
+    let cursorsRef = null;
     let isFirebaseActive = false;
-    
+    let cards = [];
+    let cursors = {};
+
+    const myUserId = 'user-' + Math.random().toString(36).substr(2, 9);
+    const myUserColor = `hsl(${Math.floor(Math.random() * 360)}, 85%, 65%)`;
+    const myUserName = 'User ' + myUserId.slice(-4);
+
     try {
-      if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+      if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
         dbRef = db.ref(`rooms/${currentRoom}/cards`);
         cursorsRef = db.ref(`rooms/${currentRoom}/cursors`);
         isFirebaseActive = true;
       }
-    } catch (e) { console.warn("Firebase init failed, falling back to local mode:", e); }
+    } catch (e) {
+      console.warn("Firebase initialization skipped or failed, running in local fallback mode:", e);
+    }
 
     // ==========================================
-    // 🌌 2. PAN & ZOOM ENGINE
+    // 🌐 HARDCODED GOOGLE APPS SCRIPT WEBHOOK URL
+    // ==========================================
+    const DEFAULT_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycby8yaFOhw5Fug5GqsdLHdRWkfNha95RdWS8l0-K-ilzKCVaTDrMVOiTesoQQZM7J4WCkw/exec";
+
+    // ==========================================
+    // 💽 MULTIPLAYER DATABASE SYNC ENGINE
+    // ==========================================
+    function syncSaveCard(card) {
+      if (isFirebaseActive && dbRef) {
+        dbRef.child(card.id).set(card);
+      } else {
+        const idx = cards.findIndex(c => c.id === card.id);
+        if (idx !== -1) cards[idx] = card; else cards.push(card);
+        localStorage.setItem(`scratchpad_${currentRoom}`, JSON.stringify(cards));
+      }
+    }
+
+    function syncDeleteCard(cardId) {
+      if (isFirebaseActive && dbRef) {
+        dbRef.child(cardId).remove();
+      } else {
+        cards = cards.filter(c => c.id !== cardId);
+        localStorage.setItem(`scratchpad_${currentRoom}`, JSON.stringify(cards));
+      }
+    }
+
+    function syncClearCards() {
+      if (isFirebaseActive && dbRef) {
+        dbRef.remove();
+      } else {
+        cards = [];
+        localStorage.removeItem(`scratchpad_${currentRoom}`);
+      }
+    }
+
+    function initRealtimeSync() {
+      if (isFirebaseActive && dbRef) {
+        // Realtime card sync listener
+        dbRef.on('value', (snapshot) => {
+          const data = snapshot.val();
+          cards = data ? Object.values(data) : [];
+          renderAllCards();
+          updateEmptyState();
+        });
+
+        // Realtime collaborative cursor sync
+        cursorsRef.on('value', (snapshot) => {
+          cursors = snapshot.val() || {};
+          renderRemoteCursors();
+        });
+
+        // Clean up cursor when closing window
+        cursorsRef.child(myUserId).onDisconnect().remove();
+      } else {
+        cards = JSON.parse(localStorage.getItem(`scratchpad_${currentRoom}`) || '[]');
+        renderAllCards();
+        updateEmptyState();
+      }
+    }
+
+    function renderAllCards() {
+      const existingCardIds = new Set(cards.map(c => c.id));
+      
+      // Remove stale DOM cards
+      world.querySelectorAll('.card').forEach(cardEl => {
+        const id = cardEl.id.replace('card-', '');
+        if (!existingCardIds.has(id)) {
+          cardEl.remove();
+        }
+      });
+
+      // Render or update active cards
+      cards.forEach(renderCard);
+      if (selectedCardId && !cards.some(c => c.id === selectedCardId)) {
+        selectedCardId = null;
+      }
+    }
+
+    function renderRemoteCursors() {
+      const activeIds = new Set(Object.keys(cursors));
+
+      // Remove disconnected cursor DOM nodes
+      world.querySelectorAll('.remote-cursor').forEach(el => {
+        const cId = el.id.replace('cursor-', '');
+        if (!activeIds.has(cId) || cId === myUserId) {
+          el.remove();
+        }
+      });
+
+      // Render / update remote cursors
+      Object.entries(cursors).forEach(([uId, data]) => {
+        if (uId === myUserId || !data) return;
+
+        let cursorEl = document.getElementById(`cursor-${uId}`);
+        if (!cursorEl) {
+          cursorEl = document.createElement('div');
+          cursorEl.id = `cursor-${uId}`;
+          cursorEl.className = 'remote-cursor';
+          cursorEl.innerHTML = `
+            <svg class="remote-cursor-svg" viewBox="0 0 24 24" fill="${data.color || '#3b82f6'}">
+              <path d="M7.6 23.2l-6.2-20.3 21.3 9-9.9 1.4-5.2 9.9z" />
+            </svg>
+            <div class="remote-cursor-label" style="background:${data.color || '#3b82f6'}">${data.name || 'User'}</div>
+          `;
+          world.appendChild(cursorEl);
+        }
+
+        cursorEl.style.transform = `translate(${data.x}px, ${data.y}px)`;
+      });
+    }
+
+    // ==========================================
+    // 🌌 1. PAN & ZOOM ENGINE
     // ==========================================
     const viewport = document.getElementById('viewport');
     const world = document.getElementById('world');
     const emptyState = document.getElementById('empty-state');
     const toast = document.getElementById('toast');
-    let panX = window.innerWidth / 2, panY = window.innerHeight / 2, scale = 1;
-    let isPanning = false, startX, startY, selectedCardId = null;
 
-    function updateTransform() { world.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`; }
+    let panX = window.innerWidth / 2;
+    let panY = window.innerHeight / 2;
+    let scale = 1;
+    let isPanning = false;
+    let startX, startY;
+    let selectedCardId = null;
+
+    function showToast(msg) {
+      if (msg) toast.innerText = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
+
+    function updateTransform() {
+      world.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+    }
     updateTransform();
+
     viewport.addEventListener('mousedown', (e) => {
-      if (e.target === viewport || e.target === world) selectCard(null);
-      if (e.button === 1 || (e.button === 0 && e.target === viewport)) {
-        isPanning = true; startX = e.clientX - panX; startY = e.clientY - panY;
+      if (e.target === viewport || e.target === world) {
+        selectCard(null);
+      }
+
+      if (e.button === 2 || e.button === 1 || (e.button === 0 && e.target === viewport)) {
+        isPanning = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
         viewport.classList.add('panning');
       }
     });
+
     window.addEventListener('mousemove', (e) => {
+      // Broadcast live mouse cursor position to room
+      if (isFirebaseActive && cursorsRef) {
+        const worldMouseX = (e.clientX - panX) / scale;
+        const worldMouseY = (e.clientY - panY) / scale;
+        broadcastCursorPosition(worldMouseX, worldMouseY);
+      }
+
       if (!isPanning) return;
-      panX = e.clientX - startX; panY = e.clientY - startY;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
       updateTransform();
     });
-    window.addEventListener('mouseup', () => { isPanning = false; viewport.classList.remove('panning'); });
+
+    window.addEventListener('mouseup', () => {
+      isPanning = false;
+      viewport.classList.remove('panning');
+    });
+
     viewport.addEventListener('contextmenu', e => e.preventDefault());
+
     viewport.addEventListener('wheel', (e) => {
       e.preventDefault();
       const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
-      panX = e.clientX - (e.clientX - panX) * zoomFactor;
-      panY = e.clientY - (e.clientY - panY) * zoomFactor;
+      const mouseX = e.clientX;
+      const mouseY = e.clientY;
+      panX = mouseX - (mouseX - panX) * zoomFactor;
+      panY = mouseY - (mouseY - panY) * zoomFactor;
       scale *= zoomFactor;
       updateTransform();
     }, { passive: false });
 
-    // ==========================================
-    // 🎨 3. MARKUP & MODAL ENGINE
-    // ==========================================
-    const markupModal = document.getElementById('markup-modal');
-    const baseCanvas = document.getElementById('base-canvas'), baseCtx = baseCanvas.getContext('2d');
-    const drawingCanvas = document.getElementById('drawing-canvas'), drawCtx = drawingCanvas.getContext('2d');
-    const modalNoteInput = document.getElementById('modal-note-input');
-    let rawBaseImageSrc, editingCardId, pasteUrlBuffer;
-
-    function openMarkupModal(originalBaseImg, noteText = "", cardId = null, url = null) {
-      editingCardId = cardId; rawBaseImageSrc = originalBaseImg;
-      modalNoteInput.value = noteText; pasteUrlBuffer = url;
-      const img = new Image();
-      img.src = originalBaseImg;
-      img.onload = () => {
-        baseCanvas.width = img.width; baseCanvas.height = img.height;
-        drawingCanvas.width = img.width; drawingCanvas.height = img.height;
-        baseCtx.drawImage(img, 0, 0);
-        markupModal.classList.add('active');
-        setTimeout(() => modalNoteInput.focus(), 100);
-      };
-    }
-
-    function saveMarkupAndFinish() {
-      const updatedNote = modalNoteInput.value.trim();
-      const targetCardId = editingCardId;
-      closeMarkupModal();
-      if (targetCardId) {
-        const card = cards.find(c => c.id === targetCardId);
-        if (card) {
-          card.note = updatedNote || (card.url ? 'Pasted Image' : 'Untitled Note');
-          syncSaveCard(card);
-        }
-      } else {
-        createAndAddCard(rawBaseImageSrc, rawBaseImageSrc, [], updatedNote, pasteUrlBuffer);
-      }
-    }
-    function closeMarkupModal() {
-      markupModal.classList.remove('active');
-      editingCardId = pasteUrlBuffer = null;
-    }
-
-    // ==========================================
-    // 📋 4. PASTE & CLIPBOARD HANDLER
-    // ==========================================
-    window.addEventListener('paste', async (e) => {
-      if (markupModal.classList.contains('active')) return;
-      let imageFile = null, textContent = '';
-      const textPromises = [];
-      for (let item of e.clipboardData.items) {
-        if (item.type.indexOf('image') !== -1) imageFile = item.getAsFile();
-        else if (item.type === 'text/plain') textPromises.push(new Promise(r => item.getAsString(r)));
-      }
-      if (!imageFile) return;
-      e.preventDefault();
-      if (textPromises.length > 0) textContent = (await Promise.all(textPromises)).join('\n');
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const isUrl = textContent.trim().startsWith('http');
-        openMarkupModal(event.target.result, isUrl ? textContent.trim() : textContent, null, isUrl ? textContent.trim() : null);
-      };
-      reader.readAsDataURL(imageFile);
-    });
-
-    // ==========================================
-    // 🗂️ 5. CARD LOGIC & RENDERING
-    // ==========================================
-    function selectCard(cardId) {
-      selectedCardId = cardId;
-      document.querySelectorAll('.card').forEach(el => el.classList.remove('selected'));
-      if (cardId) document.getElementById(`card-${cardId}`)?.classList.add('selected');
-    }
-    function createAndAddCard(img, originalBaseImg, shapes, note, url = null) {
-      const newCard = {
-        id: Date.now().toString(), img, originalBaseImg, shapes, note, url,
-        timestamp: new Date().toLocaleString(), x: (-panX / scale) + 100, y: (-panY / scale) + 100, done: false
-      };
-      cards.push(newCard);
-      syncSaveCard(newCard);
-    }
-    function syncSaveCard(card) {
-      const localCard = cards.find(c => c.id === card.id);
-      if (localCard) Object.assign(localCard, card); else cards.push(card);
-      if (isFirebaseActive) dbRef.child(card.id).set(card);
-      else localStorage.setItem(`scratchpad_${currentRoom}`, JSON.stringify(cards));
-    }
-    function syncDeleteCard(cardId) {
-      if (isFirebaseActive) dbRef.child(cardId).remove();
-      else {
-        cards = cards.filter(c => c.id !== cardId);
-        localStorage.setItem(`scratchpad_${currentRoom}`, JSON.stringify(cards));
-      }
-    }
-    function clearCanvas() {
-      if (confirm("Clear all cards from this room?")) {
-        if (isFirebaseActive) dbRef.remove();
-        else localStorage.removeItem(`scratchpad_${currentRoom}`);
-      }
-    }
-    function renderCard(card) {
-      let el = document.getElementById(`card-${card.id}`);
-      if (!el) {
-        el = document.createElement('div');
-        el.id = `card-${card.id}`;
-        world.appendChild(el);
-      }
-      el.className = `card ${card.done ? 'done' : ''} ${selectedCardId === card.id ? 'selected' : ''}`;
-      el.style.left = `${card.x}px`;
-      el.style.top = `${card.y}px`;
-      el.innerHTML = `
-        <img src="${card.img}">
-        <div class="card-footer">
-          <div><div class="card-note">${card.note}</div><div class="card-meta">${card.timestamp}</div></div>
-          <div class="card-actions">
-            ${card.url ? `<a href="${card.url}" target="_blank" class="btn-action">🔗 Link</a>` : ''}
-            <input type="checkbox" ${card.done ? 'checked' : ''} onchange="toggleDone('${card.id}')">
-            <button class="btn-action btn-delete" onclick="syncDeleteCard('${card.id}')">✕</button>
-          </div>
-        </div>`;
-      el.onmousedown = (e) => {
-        selectCard(card.id);
-        if (e.target.matches('input,button,a,.card-note')) return;
-        isDragging = true; dragStartX = e.clientX - (card.x * scale); dragStartY = e.clientY - (card.y * scale);
-        e.stopPropagation();
-        const onMove = (me) => {
-          if (!isDragging) return;
-          card.x = (me.clientX - dragStartX) / scale; card.y = (me.clientY - dragStartY) / scale;
-          el.style.left = `${card.x}px`; el.style.top = `${card.y}px`;
-          if (isFirebaseActive) throttledUpdate(card.id, { x: card.x, y: card.y });
-        };
-        const onUp = () => {
-          isDragging = false; if (!isFirebaseActive) syncSaveCard(card);
-          window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp);
-        };
-        window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
-      };
-    }
-    function toggleDone(id) {
-      const card = cards.find(c => c.id === id);
-      if (card) { card.done = !card.done; syncSaveCard(card); }
-    }
-
-    // ==========================================
-    // ✨ 6. LIVE CURSORS & REALTIME SYNC
-    // ==========================================
-    const userId = 'user-' + Math.random().toString(36).substr(2, 9);
-    const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
-    const throttledUpdate = throttle((id, data) => dbRef.child(id).update(data), 100);
-
-    function initRealtimeSync() {
-      if (isFirebaseActive) {
-        dbRef.on('value', s => {
-          cards = s.val() ? Object.values(s.val()) : [];
-          world.innerHTML = '';
-          cards.forEach(renderCard);
-          updateEmptyState();
-        });
-        cursorsRef.on('value', s => {
-          cursors = s.val() || {};
-          Object.keys(cursors).forEach(id => {
-            if (id === userId) return;
-            let cEl = document.getElementById(id);
-            if (!cEl) {
-              cEl = document.createElement('div'); cEl.id = id; cEl.className = 'cursor';
-              cEl.innerHTML = `<svg class="cursor-svg" viewBox="0 0 24 24"><path d="M7.6 23.2l-6.2-20.3 21.3 9-9.9 1.4-5.2 9.9z" fill="${cursors[id].color}"/></svg><div class="cursor-label" style="background-color:${cursors[id].color};">${cursors[id].name}</div>`;
-              world.appendChild(cEl);
-            }
-            cEl.style.transform = `translate(${cursors[id].x}px, ${cursors[id].y}px)`;
-          });
-        });
-        cursorsRef.child(userId).onDisconnect().remove();
-      } else {
-        cards = JSON.parse(localStorage.getItem(`scratchpad_${currentRoom}`) || '[]');
-        cards.forEach(renderCard);
-      }
-      updateEmptyState();
-    }
-    function updateEmptyState() { emptyState.style.display = cards.length === 0 ? 'block' : 'none'; }
-    
-    viewport.addEventListener('mousemove', throttle(e => {
-        if (!isFirebaseActive) return;
-        const x = (e.clientX - panX) / scale;
-        const y = (e.clientY - panY) / scale;
-        cursorsRef.child(userId).set({ x, y, color: userColor, name: userId.substr(5,4) });
-    }, 50));
-
+    // Throttled cursor broadcaster (50ms interval)
     function throttle(func, limit) {
       let inThrottle;
       return function() {
@@ -352,6 +456,840 @@ const firebaseConfig = {
       };
     }
 
+    const broadcastCursorPosition = throttle((x, y) => {
+      if (cursorsRef) {
+        cursorsRef.child(myUserId).set({
+          x: Math.round(x),
+          y: Math.round(y),
+          color: myUserColor,
+          name: myUserName
+        });
+      }
+    }, 50);
+
+    const broadcastCardPosition = throttle((cardId, x, y) => {
+      if (dbRef) {
+        dbRef.child(cardId).update({ x, y });
+      }
+    }, 80);
+
+    // ==========================================
+    // 🎨 2. LAYERED VECTOR DRAWING & CALLOUT ENGINE
+    // ==========================================
+    const markupModal = document.getElementById('markup-modal');
+    const baseCanvas = document.getElementById('base-canvas');
+    const baseCtx = baseCanvas.getContext('2d');
+    const drawingCanvas = document.getElementById('drawing-canvas');
+    const drawCtx = drawingCanvas.getContext('2d');
+    const modalNoteInput = document.getElementById('modal-note-input');
+
+    let currentTool = 'pen';
+    let isDrawing = false;
+    let currentShape = null;
+    let currentShapesList = [];
+    let rawBaseImageSrc = null;
+    let editingCardId = null;
+    let pasteUrlBuffer = null;
+
+    let selectedShapeIndex = -1;
+    let isDraggingShape = false;
+    let dragOffset = { x: 0, y: 0 };
+
+    function setTool(tool) {
+      currentTool = tool;
+      document.querySelectorAll('#markup-toolbar .tool-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = document.getElementById(`tool-${tool}`);
+      if (activeBtn) activeBtn.classList.add('active');
+      
+      drawingCanvas.classList.toggle('select-mode', tool === 'select');
+      drawingCanvas.classList.toggle('eraser-mode', tool === 'eraser');
+      
+      if (tool !== 'select') {
+        selectedShapeIndex = -1;
+        redrawVectorLayer();
+      }
+    }
+
+    function openMarkupModal(originalBaseImg, existingShapes = [], noteText = "", cardId = null, url = null) {
+      editingCardId = cardId;
+      rawBaseImageSrc = originalBaseImg;
+      currentShapesList = JSON.parse(JSON.stringify(existingShapes));
+      modalNoteInput.value = noteText;
+      pasteUrlBuffer = url;
+      selectedShapeIndex = -1;
+
+      const img = new Image();
+      img.src = originalBaseImg;
+      img.onload = () => {
+        baseCanvas.width = img.width;
+        baseCanvas.height = img.height;
+        drawingCanvas.width = img.width;
+        drawingCanvas.height = img.height;
+
+        baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+        baseCtx.drawImage(img, 0, 0);
+
+        redrawVectorLayer();
+        markupModal.classList.add('active');
+        setTimeout(() => modalNoteInput.focus(), 100);
+      };
+    }
+
+    function redrawVectorLayer() {
+      drawCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+      currentShapesList.forEach((shape, index) => {
+        drawSingleShape(drawCtx, shape);
+        if (currentTool === 'select' && index === selectedShapeIndex) {
+          drawSelectionBounds(drawCtx, shape);
+        }
+      });
+    }
+
+    function measureTextBox(ctx, shape) {
+      ctx.font = "bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      const lines = shape.text.split('\n');
+      let maxTextWidth = 0;
+      lines.forEach(l => {
+        const w = ctx.measureText(l).width;
+        if (w > maxTextWidth) maxTextWidth = w;
+      });
+      const padX = 14;
+      const padY = 10;
+      const lineHeight = 18;
+      const totalW = Math.max(80, maxTextWidth + (padX * 2));
+      const totalH = (lines.length * lineHeight) + (padY * 2);
+      return { w: totalW, h: totalH, padX, padY, lineHeight, lines };
+    }
+
+    function drawSingleShape(ctx, shape) {
+      ctx.save();
+      ctx.strokeStyle = shape.color;
+      ctx.fillStyle = shape.color;
+      ctx.lineWidth = shape.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (shape.type === 'pen') {
+        if (shape.points.length < 2) { ctx.restore(); return; }
+        ctx.beginPath();
+        ctx.moveTo(shape.points[0].x, shape.points[0].y);
+        for (let i = 1; i < shape.points.length; i++) {
+          ctx.lineTo(shape.points[i].x, shape.points[i].y);
+        }
+        ctx.stroke();
+      } else if (shape.type === 'rect') {
+        ctx.strokeRect(shape.x, shape.y, shape.w, shape.h);
+      } else if (shape.type === 'arrow') {
+        drawArrow(shape.x1, shape.y1, shape.x2, shape.y2, ctx, shape.width, shape.color);
+      } else if (shape.type === 'textbox') {
+        const metrics = measureTextBox(ctx, shape);
+        const x = shape.x;
+        const y = shape.y;
+        const w = metrics.w;
+        const h = metrics.h;
+        const radius = 8;
+
+        // Shadow
+        ctx.shadowColor = 'rgba(0,0,0,0.45)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 4;
+
+        // Container
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, radius);
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.fill();
+
+        // Border
+        ctx.shadowColor = 'transparent';
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = shape.color || '#10b981';
+        ctx.stroke();
+
+        // Typography
+        ctx.font = "bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        ctx.fillStyle = "#ffffff";
+        ctx.textBaseline = "top";
+        metrics.lines.forEach((line, i) => {
+          ctx.fillText(line, x + metrics.padX, y + metrics.padY + (i * metrics.lineHeight));
+        });
+      }
+      ctx.restore();
+    }
+
+    function drawArrow(fromx, fromy, tox, toy, ctx, width, color) {
+      const headlen = width * 4 + 8;
+      const angle = Math.atan2(toy - fromy, tox - fromx);
+      ctx.beginPath();
+      ctx.moveTo(fromx, fromy);
+      ctx.lineTo(tox, toy);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(tox, toy);
+      ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    function drawSelectionBounds(ctx, shape) {
+      ctx.save();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+
+      const bbox = getShapeBoundingBox(ctx, shape);
+      const pad = 6;
+      ctx.strokeRect(bbox.x - pad, bbox.y - pad, bbox.w + (pad * 2), bbox.h + (pad * 2));
+
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(bbox.x - pad - 3, bbox.y - pad - 3, 6, 6);
+      ctx.fillRect(bbox.x + bbox.w + pad - 3, bbox.y - pad - 3, 6, 6);
+      ctx.fillRect(bbox.x - pad - 3, bbox.y + bbox.h + pad - 3, 6, 6);
+      ctx.fillRect(bbox.x + bbox.w + pad - 3, bbox.y + bbox.h + pad - 3, 6, 6);
+      ctx.restore();
+    }
+
+    function getShapeBoundingBox(ctx, shape) {
+      if (shape.type === 'textbox') {
+        const m = measureTextBox(ctx, shape);
+        return { x: shape.x, y: shape.y, w: m.w, h: m.h };
+      } else if (shape.type === 'rect') {
+        return {
+          x: Math.min(shape.x, shape.x + shape.w),
+          y: Math.min(shape.y, shape.y + shape.h),
+          w: Math.abs(shape.w),
+          h: Math.abs(shape.h)
+        };
+      } else if (shape.type === 'arrow') {
+        const minX = Math.min(shape.x1, shape.x2);
+        const minY = Math.min(shape.y1, shape.y2);
+        return { x: minX, y: minY, w: Math.abs(shape.x2 - shape.x1), h: Math.abs(shape.y2 - shape.y1) };
+      } else if (shape.type === 'pen') {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        shape.points.forEach(p => {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+        });
+        return { x: minX, y: minY, w: Math.max(10, maxX - minX), h: Math.max(10, maxY - minY) };
+      }
+      return { x: 0, y: 0, w: 0, h: 0 };
+    }
+
+    function hitTestShape(x, y) {
+      for (let i = currentShapesList.length - 1; i >= 0; i--) {
+        const shape = currentShapesList[i];
+        const bbox = getShapeBoundingBox(drawCtx, shape);
+        const pad = 10;
+        if (x >= bbox.x - pad && x <= bbox.x + bbox.w + pad && y >= bbox.y - pad && y <= bbox.y + bbox.h + pad) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function undoMarkup() {
+      if (currentShapesList.length > 0) {
+        currentShapesList.pop();
+        selectedShapeIndex = -1;
+        redrawVectorLayer();
+      }
+    }
+
+    function clearAllDrawings() {
+      currentShapesList = [];
+      selectedShapeIndex = -1;
+      redrawVectorLayer();
+    }
+
+    function closeMarkupModal() {
+      markupModal.classList.remove('active');
+      editingCardId = null;
+      pasteUrlBuffer = null;
+      document.body.focus();
+    }
+
+    function getCanvasCoords(e) {
+      const rect = drawingCanvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left) * (drawingCanvas.width / rect.width),
+        y: (e.clientY - rect.top) * (drawingCanvas.height / rect.height)
+      };
+    }
+
+    function eraseAtPoint(x, y) {
+      const idx = hitTestShape(x, y);
+      if (idx !== -1) {
+        currentShapesList.splice(idx, 1);
+        selectedShapeIndex = -1;
+        redrawVectorLayer();
+      }
+    }
+
+    // Canvas Interactions
+    drawingCanvas.addEventListener('mousedown', (e) => {
+      const coords = getCanvasCoords(e);
+      const color = document.getElementById('draw-color').value;
+      const width = parseInt(document.getElementById('draw-width').value);
+
+      if (currentTool === 'select') {
+        const hitIdx = hitTestShape(coords.x, coords.y);
+        selectedShapeIndex = hitIdx;
+        if (hitIdx !== -1) {
+          isDraggingShape = true;
+          dragOffset = { x: coords.x, y: coords.y };
+          drawingCanvas.classList.add('moving-mode');
+        }
+        redrawVectorLayer();
+        return;
+      }
+
+      if (currentTool === 'text') {
+        const userText = prompt("Enter text for callout box:", "Header Title");
+        if (userText && userText.trim()) {
+          const newTextBox = {
+            type: 'textbox',
+            x: coords.x,
+            y: coords.y,
+            text: userText.trim(),
+            color: color,
+            width: width
+          };
+          currentShapesList.push(newTextBox);
+          selectedShapeIndex = currentShapesList.length - 1;
+          setTool('select');
+          redrawVectorLayer();
+        }
+        return;
+      }
+
+      if (currentTool === 'eraser') {
+        eraseAtPoint(coords.x, coords.y);
+        return;
+      }
+
+      isDrawing = true;
+      if (currentTool === 'pen') {
+        currentShape = { type: 'pen', points: [coords], color, width };
+      } else if (currentTool === 'rect') {
+        currentShape = { type: 'rect', startX: coords.x, startY: coords.y, x: coords.x, y: coords.y, w: 0, h: 0, color, width };
+      } else if (currentTool === 'arrow') {
+        currentShape = { type: 'arrow', x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color, width };
+      }
+    });
+
+    drawingCanvas.addEventListener('mousemove', (e) => {
+      const coords = getCanvasCoords(e);
+
+      if (currentTool === 'select' && isDraggingShape && selectedShapeIndex !== -1) {
+        const dx = coords.x - dragOffset.x;
+        const dy = coords.y - dragOffset.y;
+        dragOffset = { x: coords.x, y: coords.y };
+
+        const shape = currentShapesList[selectedShapeIndex];
+        if (shape.type === 'textbox' || shape.type === 'rect') {
+          shape.x += dx;
+          shape.y += dy;
+        } else if (shape.type === 'arrow') {
+          shape.x1 += dx;
+          shape.y1 += dy;
+          shape.x2 += dx;
+          shape.y2 += dy;
+        } else if (shape.type === 'pen') {
+          shape.points.forEach(p => { p.x += dx; p.y += dy; });
+        }
+        redrawVectorLayer();
+        return;
+      }
+
+      if (!isDrawing) return;
+
+      if (currentTool === 'pen') {
+        currentShape.points.push(coords);
+        redrawVectorLayer();
+        drawSingleShape(drawCtx, currentShape);
+      } else if (currentTool === 'rect') {
+        currentShape.x = Math.min(currentShape.startX, coords.x);
+        currentShape.y = Math.min(currentShape.startY, coords.y);
+        currentShape.w = Math.abs(coords.x - currentShape.startX);
+        currentShape.h = Math.abs(coords.y - currentShape.startY);
+        redrawVectorLayer();
+        drawSingleShape(drawCtx, currentShape);
+      } else if (currentTool === 'arrow') {
+        currentShape.x2 = coords.x;
+        currentShape.y2 = coords.y;
+        redrawVectorLayer();
+        drawSingleShape(drawCtx, currentShape);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDraggingShape) {
+        isDraggingShape = false;
+        drawingCanvas.classList.remove('moving-mode');
+      }
+
+      if (isDrawing) {
+        isDrawing = false;
+        if (currentShape) {
+          currentShapesList.push(currentShape);
+          currentShape = null;
+          redrawVectorLayer();
+        }
+      }
+    });
+
+    drawingCanvas.addEventListener('dblclick', (e) => {
+      if (currentTool !== 'select') return;
+      const coords = getCanvasCoords(e);
+      const hitIdx = hitTestShape(coords.x, coords.y);
+      if (hitIdx !== -1 && currentShapesList[hitIdx].type === 'textbox') {
+        const shape = currentShapesList[hitIdx];
+        const newText = prompt("Edit callout text:", shape.text);
+        if (newText !== null && newText.trim()) {
+          shape.text = newText.trim();
+          redrawVectorLayer();
+        }
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (!markupModal.classList.contains('active')) return;
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedShapeIndex !== -1) {
+        if (document.activeElement !== modalNoteInput) {
+          e.preventDefault();
+          currentShapesList.splice(selectedShapeIndex, 1);
+          selectedShapeIndex = -1;
+          redrawVectorLayer();
+          showToast("🗑️ Selected markup deleted");
+        }
+      }
+    });
+
+    function generateMergedPreview() {
+      const mergedCanvas = document.createElement('canvas');
+      mergedCanvas.width = baseCanvas.width;
+      mergedCanvas.height = baseCanvas.height;
+      const mCtx = mergedCanvas.getContext('2d');
+      mCtx.drawImage(baseCanvas, 0, 0);
+
+      currentShapesList.forEach(shape => drawSingleShape(mCtx, shape));
+      return mergedCanvas.toDataURL('image/png');
+    }
+
+    function saveMarkupAndFinish() {
+      const mergedPreviewUrl = generateMergedPreview();
+      const updatedNote = modalNoteInput.value.trim();
+      const targetCardId = editingCardId;
+
+      closeMarkupModal();
+
+      if (targetCardId) {
+        const card = cards.find(c => c.id === targetCardId);
+        if (card) {
+          card.img = mergedPreviewUrl;
+          card.originalBaseImg = rawBaseImageSrc;
+          card.shapes = JSON.parse(JSON.stringify(currentShapesList));
+          card.note = updatedNote || (card.url ? 'Pasted Image' : 'Untitled Note');
+          syncSaveCard(card);
+          showToast("💾 Changes saved to card!");
+        }
+      } else {
+        createAndAddCard(mergedPreviewUrl, rawBaseImageSrc, currentShapesList, updatedNote, pasteUrlBuffer);
+      }
+    }
+
+    // ==========================================
+    // 📊 3. DIRECT GOOGLE SHEETS WEBHOOK EXPORT
+    // ==========================================
+    async function exportToGoogleSheets() {
+      if (cards.length === 0) {
+        alert("Canvas is empty! Add some screenshots first.");
+        return;
+      }
+
+      const webhookUrl = DEFAULT_SHEETS_WEBHOOK_URL;
+      const btn = document.getElementById('btn-export');
+      btn.innerText = "⏳ Exporting to Sheets...";
+      btn.disabled = true;
+
+      try {
+        const payload = JSON.stringify({ tasks: cards });
+
+        await fetch(webhookUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'payload=' + encodeURIComponent(payload)
+        });
+
+        showToast(`✅ Exported ${cards.length} cards directly to Google Sheets!`);
+      } catch (err) {
+        console.error("Export error:", err);
+        alert("Export submitted! Check your Google Sheet in a few moments.");
+      } finally {
+        btn.innerText = "📊 Export to Google Sheets";
+        btn.disabled = false;
+      }
+    }
+
+    // ==========================================
+    // 📥 4. IN-CELL ASPECT-RATIO EXCEL (.XLSX) EXPORT
+    // ==========================================
+    function getImageDimensions(src) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+      });
+    }
+
+    async function exportToExcelSheet() {
+      if (cards.length === 0) {
+        alert("Canvas is empty! Add some screenshots first.");
+        return;
+      }
+
+      const btn = document.getElementById('btn-export-excel');
+      btn.innerText = "⏳ Generating Excel...";
+      btn.disabled = true;
+
+      try {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Tasks');
+
+        worksheet.columns = [
+          { header: 'Status', key: 'status', width: 12 },
+          { header: 'Date', key: 'date', width: 22 },
+          { header: 'Description', key: 'description', width: 42 },
+          { header: 'Thumbnail Image', key: 'thumbnail', width: 38 }
+        ];
+
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+        headerRow.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: '1E293B' }
+        };
+        headerRow.height = 28;
+        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        const MAX_BOX_WIDTH = 220;
+        const MAX_BOX_HEIGHT = 120;
+
+        for (let i = 0; i < cards.length; i++) {
+          const card = cards[i];
+          const rowIndex = i + 2;
+
+          const dims = await getImageDimensions(card.img);
+          const aspect = dims.width / dims.height;
+
+          let targetW, targetH;
+          if (aspect >= (MAX_BOX_WIDTH / MAX_BOX_HEIGHT)) {
+            targetW = MAX_BOX_WIDTH;
+            targetH = Math.round(MAX_BOX_WIDTH / aspect);
+          } else {
+            targetH = MAX_BOX_HEIGHT;
+            targetW = Math.round(MAX_BOX_HEIGHT * aspect);
+          }
+
+          const row = worksheet.addRow({
+            status: card.done ? true : false,
+            date: card.timestamp,
+            description: card.url ? `${card.note}\n\nLink: ${card.url}` : card.note
+          });
+
+          row.height = Math.max(65, Math.round(targetH * 0.75 + 15));
+          row.alignment = { vertical: 'middle', wrapText: true };
+
+          const statusCell = worksheet.getCell(`A${rowIndex}`);
+          statusCell.alignment = { vertical: 'middle', horizontal: 'center' };
+          statusCell.dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: ['"TRUE,FALSE"']
+          };
+
+          const imageId = workbook.addImage({
+            base64: card.img,
+            extension: 'png',
+          });
+
+          worksheet.addImage(imageId, {
+            tl: { col: 3.1, row: rowIndex - 0.85 },
+            ext: { width: targetW, height: targetH }
+          });
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, `Scratchpad_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+        showToast("✅ Excel file downloaded with in-cell thumbnails!");
+      } catch (err) {
+        console.error(err);
+        alert("Error exporting Excel file: " + err.message);
+      } finally {
+        btn.innerText = "📥 Export Excel (.xlsx)";
+        btn.disabled = false;
+      }
+    }
+
+    // ==========================================
+    // 📋 5. NATIVE BLOB SLACK CLIPBOARD EXPORT
+    // ==========================================
+    function dataUrlToBlob(dataUrl) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = dataUrl;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width;
+          canvas.height = img.naturalHeight || img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => resolve(blob), 'image/png');
+        };
+      });
+    }
+
+    async function copyCardToClipboardForSlack(cardId) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+
+      if (!window.isSecureContext || !navigator.clipboard || !window.ClipboardItem) {
+        alert("⚠️ Clipboard copy requires a secure context (HTTPS or localhost).");
+        return;
+      }
+
+      try {
+        const imageBlob = await dataUrlToBlob(card.img);
+        
+        let noteContent = card.note ? `📝 ${card.note}` : '';
+        if (card.url) {
+            noteContent += `${noteContent ? '\n\n' : ''}🔗 ${card.url}`;
+        }
+        
+        const textBlob = new Blob([noteContent], { type: 'text/plain' });
+
+        const clipboardItem = new ClipboardItem({
+          'image/png': imageBlob,
+          'text/plain': textBlob
+        });
+
+        await navigator.clipboard.write([clipboardItem]);
+        showToast("📋 Copied image, note & link! Paste (Ctrl+V) into Slack.");
+      } catch (err) {
+        console.warn("Multi-mime copy failed, trying image-only copy:", err);
+        try {
+          const imageBlob = await dataUrlToBlob(card.img);
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': imageBlob })]);
+          showToast("📋 Copied image to clipboard! Ready for Slack.");
+        } catch (fallbackErr) {
+          console.error("Clipboard blocked:", fallbackErr);
+          alert("Clipboard write failed: " + fallbackErr.message);
+        }
+      }
+    }
+
+    // Global Keyboard Shortcuts (Ctrl+C for Slack)
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && selectedCardId) {
+        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          copyCardToClipboardForSlack(selectedCardId);
+        }
+      }
+    });
+
+    // ================================================
+    // 📋 6. SMART PASTE HANDLER
+    // ================================================
+    window.addEventListener('paste', async (e) => {
+        if (markupModal.classList.contains('active')) return;
+        
+        const items = e.clipboardData.items;
+        let imageFile = null;
+        let textContent = '';
+
+        const textPromises = [];
+        for (let item of items) {
+            if (item.type.indexOf('image') !== -1) {
+                imageFile = item.getAsFile();
+            } else if (item.type === 'text/plain') {
+                textPromises.push(new Promise(resolve => item.getAsString(resolve)));
+            }
+        }
+        
+        if (!imageFile) return;
+        e.preventDefault();
+
+        if (textPromises.length > 0) {
+            const textResults = await Promise.all(textPromises);
+            textContent = textResults.join('\n');
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const isUrl = textContent.trim().startsWith('http');
+            const noteForModal = isUrl ? textContent.trim() : (textContent || '');
+            const urlForModal = isUrl ? textContent.trim() : null;
+            openMarkupModal(event.target.result, [], noteForModal, null, urlForModal);
+        };
+        reader.readAsDataURL(imageFile);
+    });
+
+    // ==========================================
+    // 🗂️ 7. TASK CARD LOGIC & RENDERING
+    // ==========================================
+    function selectCard(cardId) {
+      selectedCardId = cardId;
+      document.querySelectorAll('.card').forEach(el => el.classList.remove('selected'));
+      if (cardId) {
+        const el = document.getElementById(`card-${cardId}`);
+        if (el) el.classList.add('selected');
+      }
+    }
+
+    function updateEmptyState() {
+      emptyState.style.display = cards.length === 0 ? 'block' : 'none';
+    }
+
+    function createAndAddCard(mergedImg, originalBaseImg, shapes, note, url = null) {
+      const spawnX = (-panX + (window.innerWidth / 2)) / scale - 160;
+      const spawnY = (-panY + (window.innerHeight / 2)) / scale - 120;
+
+      const newCard = {
+        id: Date.now().toString(),
+        img: mergedImg,
+        originalBaseImg: originalBaseImg,
+        shapes: shapes,
+        note: note || (url ? 'Pasted Image' : 'Untitled Note'),
+        url: url,
+        timestamp: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        x: spawnX,
+        y: spawnY,
+        done: false
+      };
+
+      cards.push(newCard);
+      syncSaveCard(newCard);
+      selectCard(newCard.id);
+      updateEmptyState();
+    }
+
+    function editCard(cardId) {
+        const card = cards.find(c => c.id === cardId);
+        if (!card) return;
+        openMarkupModal(card.originalBaseImg || card.img, card.shapes || [], card.note, card.id, card.url);
+    }
+
+    function editNoteInline(cardId) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+      const newNote = prompt("Edit Task / Note:", card.note);
+      if (newNote !== null) {
+        card.note = newNote.trim() || "Untitled Note";
+        syncSaveCard(card);
+        showToast("📝 Note updated!");
+      }
+    }
+
+    function renderCard(card) {
+      let el = document.getElementById(`card-${card.id}`);
+      if (!el) {
+        el = document.createElement('div');
+        el.id = `card-${card.id}`;
+        world.appendChild(el);
+      }
+
+      el.className = `card ${card.done ? 'done' : ''} ${selectedCardId === card.id ? 'selected' : ''}`;
+      el.style.left = `${card.x}px`;
+      el.style.top = `${card.y}px`;
+
+      const linkButton = card.url ? `<a href="${card.url}" target="_blank" rel="noopener noreferrer" class="btn-action" title="${card.url}">🔗 Link</a>` : '';
+
+      el.innerHTML = `
+        <img src="${card.img}">
+        <div class="card-footer">
+          <div>
+            <div class="card-note" title="Double-click to edit note" ondblclick="editNoteInline('${card.id}')">${card.note}</div>
+            <div class="card-meta">${card.timestamp}</div>
+          </div>
+          <div class="card-actions">
+            ${linkButton}
+            <button class="btn-action btn-copy" title="Copy Image & Note for Slack (Ctrl+C)" onclick="copyCardToClipboardForSlack('${card.id}')">📋 Slack</button>
+            <button class="btn-action" title="Modify Screenshot & Markups" onclick="editCard('${card.id}')">✏️</button>
+            <input type="checkbox" ${card.done ? 'checked' : ''} onchange="toggleDone('${card.id}')">
+            <button class="btn-action btn-delete" title="Delete" onclick="deleteCard('${card.id}')">✕</button>
+          </div>
+        </div>
+      `;
+
+      let isDragging = false, dragStartX, dragStartY;
+
+      el.onmousedown = (e) => {
+        selectCard(card.id);
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.classList.contains('card-note')) return;
+        isDragging = true;
+        dragStartX = e.clientX - (card.x * scale);
+        dragStartY = e.clientY - (card.y * scale);
+        e.stopPropagation();
+
+        const onMouseMove = (moveEvent) => {
+          if (!isDragging) return;
+          card.x = (moveEvent.clientX - dragStartX) / scale;
+          card.y = (moveEvent.clientY - dragStartY) / scale;
+          el.style.left = `${card.x}px`;
+          el.style.top = `${card.y}px`;
+          
+          if (isFirebaseActive) {
+            broadcastCardPosition(card.id, card.x, card.y);
+          }
+        };
+
+        const onMouseUp = () => {
+          isDragging = false;
+          syncSaveCard(card);
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      };
+    }
+
+    function toggleDone(id) {
+      const card = cards.find(c => c.id === id);
+      if (card) {
+        card.done = !card.done;
+        syncSaveCard(card);
+      }
+    }
+
+    function deleteCard(id) {
+      syncDeleteCard(id);
+      if (selectedCardId === id) selectedCardId = null;
+      updateEmptyState();
+    }
+
+    function clearCanvas() {
+      if (confirm("Clear all cards from this room?")) {
+        syncClearCards();
+        updateEmptyState();
+      }
+    }
+
+    // Initialize Realtime Sync
     initRealtimeSync();
   </script>
 </body>
