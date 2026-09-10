@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad v1.1</title>
+  <title>Visual Scratchpad v1.2</title>
 
   <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
@@ -60,7 +60,7 @@
     .card-actions { display: flex; gap: 6px; align-items: center; }
     .card-actions input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
     
-    .btn-action { background: none; border: none; color: #94a3b8; padding: 3px 6px; font-size: 0.85rem; cursor: pointer; border-radius: 4px; }
+    .btn-action { background: none; border: none; color: #94a3b8; padding: 3px 6px; font-size: 0.85rem; cursor: pointer; border-radius: 4px; text-decoration: none; }
     .btn-action:hover { background: rgba(255,255,255,0.1); color: #f8fafc; }
     .btn-copy { color: #60a5fa; font-weight: 600; }
     .btn-copy:hover { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
@@ -854,7 +854,7 @@
           const row = worksheet.addRow({
             status: card.done ? true : false,
             date: card.timestamp,
-            description: card.note
+            description: card.url ? `${card.note}\n\nLink: ${card.url}` : card.note
           });
 
           row.height = Math.max(65, Math.round(targetH * 0.75 + 15));
@@ -921,9 +921,14 @@
       }
 
       try {
-        // Convert to binary PNG Blob using direct canvas rendering (no atob error)
         const imageBlob = await dataUrlToBlob(card.img);
-        const textBlob = new Blob([card.note ? `📝 ${card.note}` : ''], { type: 'text/plain' });
+        
+        let noteContent = card.note ? `📝 ${card.note}` : '';
+        if (card.url) {
+            noteContent += `${noteContent ? '\n' : ''}🔗 ${card.url}`;
+        }
+        
+        const textBlob = new Blob([noteContent], { type: 'text/plain' });
 
         const clipboardItem = new ClipboardItem({
           'image/png': imageBlob,
@@ -931,7 +936,7 @@
         });
 
         await navigator.clipboard.write([clipboardItem]);
-        showToast("📋 Copied image & note! Paste (Ctrl+V) directly into Slack.");
+        showToast("📋 Copied image, note & link! Paste (Ctrl+V) into Slack.");
       } catch (err) {
         console.warn("Multi-mime copy failed, trying image-only copy:", err);
         try {
@@ -958,53 +963,41 @@
     // ================================================
     // 📋 6. SMART PASTE HANDLER (NEW & INTEGRATED)
     // ================================================
-    window.addEventListener('paste', (e) => {
+    window.addEventListener('paste', async (e) => {
         if (markupModal.classList.contains('active')) return;
-
+        
+        const items = e.clipboardData.items;
         let imageFile = null;
         let textContent = '';
-        let items = e.clipboardData.items;
 
-        // Use a counter to know when all async 'getAsString' calls are done
-        let itemsToProcess = items.length;
-        let processedItems = 0;
-
-        const onDoneProcessing = () => {
-            if (!imageFile) return; // Must have an image
-
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                // If a URL was found, bypass markup and create card directly
-                if (textContent.startsWith('http')) {
-                    createAndAddCard(event.target.result, event.target.result, [], textContent);
-                } else {
-                    // Otherwise, open markup editor with the found text (or empty)
-                    openMarkupModal(event.target.result, [], textContent);
-                }
-            };
-            reader.readAsDataURL(imageFile);
-        };
-        
-        if(items.length === 0) return;
-
+        const textPromises = [];
         for (let item of items) {
-            if (item.type.indexOf('image') === 0) {
+            if (item.type.indexOf('image') !== -1) {
                 imageFile = item.getAsFile();
             } else if (item.type === 'text/plain') {
-                item.getAsString(text => {
-                    textContent = text;
-                    processedItems++;
-                    if (processedItems === itemsToProcess) onDoneProcessing();
-                });
-                continue; // Continue to next item without incrementing below
+                textPromises.push(new Promise(resolve => item.getAsString(resolve)));
             }
-            processedItems++;
         }
         
-        // If no text items were found, call done immediately
-        if (processedItems === itemsToProcess) onDoneProcessing();
-    });
+        if (!imageFile) return;
+        e.preventDefault();
 
+        if (textPromises.length > 0) {
+            const textResults = await Promise.all(textPromises);
+            textContent = textResults.join('\n');
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const isUrl = textContent.trim().startsWith('http');
+            if (isUrl) {
+                createAndAddCard(event.target.result, event.target.result, [], 'Pasted Image', textContent.trim());
+            } else {
+                openMarkupModal(event.target.result, [], textContent);
+            }
+        };
+        reader.readAsDataURL(imageFile);
+    });
 
     // ==========================================
     // 🗂️ 7. TASK CARD LOGIC
@@ -1022,7 +1015,7 @@
       emptyState.style.display = cards.length === 0 ? 'block' : 'none';
     }
 
-    function createAndAddCard(mergedImg, originalBaseImg, shapes, note) {
+    function createAndAddCard(mergedImg, originalBaseImg, shapes, note, url = null) {
       const spawnX = (-panX + (window.innerWidth / 2)) / scale - 160;
       const spawnY = (-panY + (window.innerHeight / 2)) / scale - 120;
 
@@ -1032,6 +1025,7 @@
         originalBaseImg: originalBaseImg,
         shapes: shapes,
         note: note,
+        url: url,
         timestamp: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         x: spawnX,
         y: spawnY,
@@ -1057,7 +1051,7 @@
       const newNote = prompt("Edit Task / Note:", card.note);
       if (newNote !== null) {
         card.note = newNote.trim() || "Untitled Note";
-        const noteEl = document.querySelector(`#card-${card.id} .card-note`);
+        const noteEl = document.querySelector(`#card-${cardId} .card-note`);
         if (noteEl) noteEl.innerText = card.note;
         dbSaveCard(card);
         showToast("📝 Note updated!");
@@ -1071,6 +1065,8 @@
       el.style.left = `${card.x}px`;
       el.style.top = `${card.y}px`;
 
+      const linkButton = card.url ? `<a href="${card.url}" target="_blank" rel="noopener noreferrer" class="btn-action" title="${card.url}">🔗 Link</a>` : '';
+
       el.innerHTML = `
         <img src="${card.img}">
         <div class="card-footer">
@@ -1079,6 +1075,7 @@
             <div class="card-meta">${card.timestamp}</div>
           </div>
           <div class="card-actions">
+            ${linkButton}
             <button class="btn-action btn-copy" title="Copy Image & Note for Slack (Ctrl+C)" onclick="copyCardToClipboardForSlack('${card.id}')">📋 Slack</button>
             <button class="btn-action" title="Modify Screenshot & Markups" onclick="editCard('${card.id}')">✏️</button>
             <input type="checkbox" ${card.done ? 'checked' : ''} onchange="toggleDone('${card.id}')">
@@ -1090,7 +1087,7 @@
       let isDragging = false, dragStartX, dragStartY;
       el.addEventListener('mousedown', (e) => {
         selectCard(card.id);
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.classList.contains('card-note')) return;
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'A' || e.target.classList.contains('card-note')) return;
         isDragging = true;
         dragStartX = e.clientX - (card.x * scale);
         dragStartY = e.clientY - (card.y * scale);
