@@ -894,8 +894,23 @@
     }
 
     // ==========================================
-    // 📋 5. MULTI-MIME SLACK CLIPBOARD EXPORT (FIXED)
+    // 📋 5. NATIVE BLOB SLACK CLIPBOARD EXPORT (FIXED)
     // ==========================================
+    function dataUrlToBlob(dataUrl) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = dataUrl;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width;
+          canvas.height = img.naturalHeight || img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => resolve(blob), 'image/png');
+        };
+      });
+    }
+
     async function copyCardToClipboardForSlack(cardId) {
       const card = cards.find(c => c.id === cardId);
       if (!card) return;
@@ -906,14 +921,8 @@
       }
 
       try {
-        // Extract pure base64 string
-        const base64Data = card.img.indexOf(',') > -1 ? card.img.split(',') : card.img;
-        const byteString = atob(base64Data);
-        const ab = new ArrayBuffer(byteString.length);
-        const ia = new Uint8Array(ab);
-        for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-        
-        const imageBlob = new Blob([ab], { type: 'image/png' });
+        // Convert to binary PNG Blob using direct canvas rendering (no atob error)
+        const imageBlob = await dataUrlToBlob(card.img);
         const textBlob = new Blob([card.note ? `📝 ${card.note}` : ''], { type: 'text/plain' });
 
         const clipboardItem = new ClipboardItem({
@@ -926,13 +935,7 @@
       } catch (err) {
         console.warn("Multi-mime copy failed, trying image-only copy:", err);
         try {
-          const base64Data = card.img.indexOf(',') > -1 ? card.img.split(',') : card.img;
-          const byteString = atob(base64Data);
-          const ab = new ArrayBuffer(byteString.length);
-          const ia = new Uint8Array(ab);
-          for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-          const imageBlob = new Blob([ab], { type: 'image/png' });
-
+          const imageBlob = await dataUrlToBlob(card.img);
           await navigator.clipboard.write([new ClipboardItem({ 'image/png': imageBlob })]);
           showToast("📋 Copied image to clipboard! Ready for Slack.");
         } catch (fallbackErr) {
