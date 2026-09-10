@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad - Layered Markup & Google Sheets Sync</title>
+  <title>Visual Scratchpad 1 - Layered Markup, Excel & Sheets Sync</title>
+
+  <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
 
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
@@ -18,8 +22,10 @@
     .shortcuts { font-size: 0.8rem; color: #cbd5e1; display: flex; gap: 8px; }
     .shortcuts kbd { background: #1e293b; border: 1px solid #475569; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-weight: 600; color: #f8fafc; }
     
-    .btn-header { background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
+    .btn-header { background: #10b981; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
     .btn-header:hover { background: #059669; }
+    .btn-excel { background: #0284c7; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
+    .btn-excel:hover { background: #0369a1; }
     .btn-ai-cfg { background: #8b5cf6; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; }
     .btn-ai-cfg:hover { background: #7c3aed; }
     .btn-danger { background: #ef4444; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; }
@@ -133,6 +139,7 @@
   <div id="toolbar">
     <span class="badge">SCRATCHPAD</span>
     <button class="btn-header" id="btn-export" onclick="exportToGoogleSheets()" title="Directly sync all cards to your Google Sheet">📊 Export to Google Sheets</button>
+    <button class="btn-excel" id="btn-export-excel" onclick="exportToExcelSheet()" title="Download Excel .xlsx with Status, Date, Description, and Images">📥 Export Excel (.xlsx)</button>
     <button class="btn-ai-cfg" onclick="configureHfToken()" title="Set or update your Hugging Face API token">🔑 HF Token</button>
     <button class="btn-danger" onclick="clearCanvas()">🗑️ Clear All</button>
     <div class="shortcuts">
@@ -617,7 +624,6 @@
       try {
         const payload = JSON.stringify({ tasks: cards });
 
-        // Uses standard POST with no-cors support to bypass Workspace OAuth redirect headers
         await fetch(webhookUrl, {
           method: 'POST',
           mode: 'no-cors',
@@ -636,7 +642,117 @@
     }
 
     // ==========================================
-    // ✨ 4. STABLE DIFFUSION AI PIPELINE
+    // 📥 4. ASPECT-RATIO PRESERVING EXCEL (.XLSX) EXPORT
+    // ==========================================
+    function getImageDimensions(src) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+      });
+    }
+
+    async function exportToExcelSheet() {
+      if (cards.length === 0) {
+        alert("Canvas is empty! Add some screenshots first.");
+        return;
+      }
+
+      const btn = document.getElementById('btn-export-excel');
+      btn.innerText = "⏳ Generating Excel...";
+      btn.disabled = true;
+
+      try {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Tasks');
+
+        // Required Columns: Status, Date, Description, Thumbnail Image
+        worksheet.columns = [
+          { header: 'Status', key: 'status', width: 12 },
+          { header: 'Date', key: 'date', width: 22 },
+          { header: 'Description', key: 'description', width: 40 },
+          { header: 'Thumbnail Image', key: 'thumbnail', width: 36 }
+        ];
+
+        // Format Header Row
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+        headerRow.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: '1E293B' }
+        };
+        headerRow.height = 28;
+        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        const MAX_BOX_WIDTH = 220;
+        const MAX_BOX_HEIGHT = 130;
+
+        for (let i = 0; i < cards.length; i++) {
+          const card = cards[i];
+          const rowIndex = i + 2;
+
+          // 1. Calculate natural 1:1 aspect ratio dimensions
+          const dims = await getImageDimensions(card.img);
+          const aspect = dims.width / dims.height;
+
+          let targetW, targetH;
+          if (aspect >= (MAX_BOX_WIDTH / MAX_BOX_HEIGHT)) {
+            targetW = MAX_BOX_WIDTH;
+            targetH = Math.round(MAX_BOX_WIDTH / aspect);
+          } else {
+            targetH = MAX_BOX_HEIGHT;
+            targetW = Math.round(MAX_BOX_HEIGHT * aspect);
+          }
+
+          // 2. Add Row
+          const row = worksheet.addRow({
+            status: card.done ? true : false,
+            date: card.timestamp,
+            description: card.note
+          });
+
+          // Proportional row height based on image thumbnail height
+          row.height = Math.max(70, Math.round(targetH * 0.75 + 15));
+          row.alignment = { vertical: 'middle', wrapText: true };
+
+          // Center Checkbox in Column A
+          const statusCell = worksheet.getCell(`A${rowIndex}`);
+          statusCell.alignment = { vertical: 'middle', horizontal: 'center' };
+          statusCell.dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: ['"TRUE,FALSE"']
+          };
+
+          // 3. Embed 1:1 Proportional Image into Column D (Thumbnail Image)
+          const imageId = workbook.addImage({
+            base64: card.img,
+            extension: 'png',
+          });
+
+          worksheet.addImage(imageId, {
+            tl: { col: 3.1, row: rowIndex - 0.9 },
+            ext: { width: targetW, height: targetH }
+          });
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, `Scratchpad_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+        showToast("✅ Excel file downloaded! Ready to open or import to Drive.");
+      } catch (err) {
+        console.error(err);
+        alert("Error exporting Excel file: " + err.message);
+      } finally {
+        btn.innerText = "📥 Export Excel (.xlsx)";
+        btn.disabled = false;
+      }
+    }
+
+    // ==========================================
+    // ✨ 5. STABLE DIFFUSION AI PIPELINE
     // ==========================================
     const aiModal = document.getElementById('ai-modal');
     let aiTargetCardId = null;
@@ -766,7 +882,7 @@
     }
 
     // ==========================================
-    // 📋 5. MULTI-MIME SLACK CLIPBOARD EXPORT
+    // 📋 6. MULTI-MIME SLACK CLIPBOARD EXPORT
     // ==========================================
     async function copyCardToClipboardForSlack(cardId) {
       const card = cards.find(c => c.id === cardId);
@@ -836,7 +952,7 @@
     });
 
     // ==========================================
-    // 🗂️ 6. TASK CARD LOGIC
+    // 🗂️ 7. TASK CARD LOGIC
     // ==========================================
     function selectCard(cardId) {
       selectedCardId = cardId;
