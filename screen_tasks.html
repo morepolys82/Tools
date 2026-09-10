@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Visual Scratchpad v1.2</title>
+  <title>Visual Scratchpad v1.3</title>
 
   <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
@@ -334,6 +334,7 @@
     let currentShapesList = [];
     let rawBaseImageSrc = null;
     let editingCardId = null;
+    let pasteUrlBuffer = null; // NEW: Buffer to hold URL during markup
 
     let selectedShapeIndex = -1;
     let isDraggingShape = false;
@@ -354,11 +355,12 @@
       }
     }
 
-    function openMarkupModal(originalBaseImg, existingShapes = [], noteText = "", cardId = null) {
+    function openMarkupModal(originalBaseImg, existingShapes = [], noteText = "", cardId = null, url = null) {
       editingCardId = cardId;
       rawBaseImageSrc = originalBaseImg;
       currentShapesList = JSON.parse(JSON.stringify(existingShapes));
       modalNoteInput.value = noteText;
+      pasteUrlBuffer = url; // Store the URL
       selectedShapeIndex = -1;
 
       const img = new Image();
@@ -440,7 +442,7 @@
         // Container
         ctx.beginPath();
         ctx.roundRect(x, y, w, h, radius);
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
         ctx.fill();
 
         // Border
@@ -555,6 +557,7 @@
     function closeMarkupModal() {
       markupModal.classList.remove('active');
       editingCardId = null;
+      pasteUrlBuffer = null; // Clear URL buffer
       document.body.focus();
     }
 
@@ -728,7 +731,7 @@
 
     function saveMarkupAndFinish() {
       const mergedPreviewUrl = generateMergedPreview();
-      const updatedNote = modalNoteInput.value.trim() || "Untitled Note";
+      const updatedNote = modalNoteInput.value.trim();
       const targetCardId = editingCardId;
 
       closeMarkupModal();
@@ -739,20 +742,20 @@
           card.img = mergedPreviewUrl;
           card.originalBaseImg = rawBaseImageSrc;
           card.shapes = JSON.parse(JSON.stringify(currentShapesList));
-          card.note = updatedNote;
+          card.note = updatedNote || (card.url ? 'Pasted Image' : 'Untitled Note');
           
           const cardEl = document.getElementById(`card-${card.id}`);
           if (cardEl) {
             const imgEl = cardEl.querySelector('img');
             const noteEl = cardEl.querySelector('.card-note');
             if (imgEl) imgEl.src = mergedPreviewUrl;
-            if (noteEl) noteEl.innerText = updatedNote;
+            if (noteEl) noteEl.innerText = card.note;
           }
           dbSaveCard(card);
           showToast("💾 Changes saved to card!");
         }
       } else {
-        createAndAddCard(mergedPreviewUrl, rawBaseImageSrc, currentShapesList, updatedNote);
+          createAndAddCard(mergedPreviewUrl, rawBaseImageSrc, currentShapesList, updatedNote, pasteUrlBuffer);
       }
     }
 
@@ -925,7 +928,7 @@
         
         let noteContent = card.note ? `📝 ${card.note}` : '';
         if (card.url) {
-            noteContent += `${noteContent ? '\n' : ''}🔗 ${card.url}`;
+            noteContent += `${noteContent ? '\n\n' : ''}🔗 ${card.url}`;
         }
         
         const textBlob = new Blob([noteContent], { type: 'text/plain' });
@@ -961,7 +964,7 @@
     });
 
     // ================================================
-    // 📋 6. SMART PASTE HANDLER (NEW & INTEGRATED)
+    // 📋 6. SMART PASTE HANDLER (REVISED)
     // ================================================
     window.addEventListener('paste', async (e) => {
         if (markupModal.classList.contains('active')) return;
@@ -990,11 +993,9 @@
         const reader = new FileReader();
         reader.onload = (event) => {
             const isUrl = textContent.trim().startsWith('http');
-            if (isUrl) {
-                createAndAddCard(event.target.result, event.target.result, [], 'Pasted Image', textContent.trim());
-            } else {
-                openMarkupModal(event.target.result, [], textContent);
-            }
+            const noteForModal = isUrl ? textContent.trim() : (textContent || '');
+            const urlForModal = isUrl ? textContent.trim() : null;
+            openMarkupModal(event.target.result, [], noteForModal, null, urlForModal);
         };
         reader.readAsDataURL(imageFile);
     });
@@ -1024,7 +1025,7 @@
         img: mergedImg,
         originalBaseImg: originalBaseImg,
         shapes: shapes,
-        note: note,
+        note: note || (url ? 'Pasted Image' : 'Untitled Note'),
         url: url,
         timestamp: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         x: spawnX,
@@ -1040,9 +1041,9 @@
     }
 
     function editCard(cardId) {
-      const card = cards.find(c => c.id === cardId);
-      if (!card) return;
-      openMarkupModal(card.originalBaseImg || card.img, card.shapes || [], card.note, card.id);
+        const card = cards.find(c => c.id === cardId);
+        if (!card) return;
+        openMarkupModal(card.originalBaseImg || card.img, card.shapes || [], card.note, card.id, card.url);
     }
 
     function editNoteInline(cardId) {
