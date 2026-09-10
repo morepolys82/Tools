@@ -2,360 +2,290 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Street View Pinboard Canvas</title>
+  <title>Visual Scratchpad</title>
+
+  <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation with Embedded Images -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
   <style>
-    :root {
-      --bg-color: #121316;
-      --grid-color: rgba(255, 255, 255, 0.06);
-      --card-bg: #1e2025;
-      --accent-color: #22c55e; /* Default green accent */
-      --text-main: #f3f4f6;
-      --text-sub: #9ca3af;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #f8fafc; }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      user-select: none;
+    /* Top Floating Header */
+    #toolbar {
+      position: fixed; top: 16px; left: 16px; z-index: 100;
+      display: flex; align-items: center; gap: 8px; background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(8px);
+      padding: 8px 16px; border-radius: 10px; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
     }
+    .badge { background: #3b82f6; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 0.75rem; letter-spacing: 0.5px; }
+    .shortcuts { font-size: 0.8rem; color: #cbd5e1; display: flex; gap: 8px; }
+    .shortcuts kbd { background: #1e293b; border: 1px solid #475569; padding: 2px 6px; border-radius: 4px; font-family: inherit; font-weight: 600; color: #f8fafc; }
+    
+    .btn-header { background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
+    .btn-header:hover { background: #059669; }
+    .btn-excel { background: #0284c7; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; display: flex; align-items: center; gap: 6px; }
+    .btn-excel:hover { background: #0369a1; }
+    .btn-danger { background: #ef4444; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 0.8rem; transition: background 0.15s ease; }
+    .btn-danger:hover { background: #dc2626; }
 
-    body {
-      background-color: var(--bg-color);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      color: var(--text-main);
-      overflow: hidden;
-      height: 100vh;
-      width: 100vw;
+    /* Toast Notification */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #10b981; color: white; padding: 10px 20px; border-radius: 8px;
+      font-weight: 600; font-size: 0.9rem; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      opacity: 0; pointer-events: none; transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 2000; text-align: center;
     }
-
-    /* Top Floating Toolbar */
-    header {
-      position: fixed;
-      top: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(30, 32, 37, 0.85);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      padding: 8px 22px;
-      border-radius: 9999px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      z-index: 1000;
-      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
-    }
-
-    .status-badge {
-      font-size: 13px;
-      color: var(--text-sub);
-    }
-
-    .status-badge b {
-      color: var(--accent-color);
-    }
-
-    .btn-reset-view {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      color: var(--text-main);
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: background 0.15s ease;
-    }
-
-    .btn-reset-view:hover {
-      background: rgba(255, 255, 255, 0.15);
-    }
+    #toast.show { opacity: 1; transform: translate(-50%, -8px); }
 
     /* Infinite Canvas Viewport */
-    #viewport {
-      position: absolute;
-      inset: 0;
-      cursor: grab;
-      overflow: hidden;
-    }
+    #viewport { width: 100vw; height: 100vh; position: relative; cursor: grab; }
+    #viewport.panning { cursor: grabbing; }
+    #world { position: absolute; top: 0; left: 0; transform-origin: 0 0; width: 0; height: 0; }
 
-    #viewport.panning {
-      cursor: grabbing;
+    /* Task Cards */
+    .card {
+      position: absolute; background: #1e293b; border: 2px solid #334155; border-radius: 10px;
+      padding: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); cursor: move; display: flex; flex-direction: column;
+      width: max-content; max-width: 480px; transition: opacity 0.15s ease, filter 0.15s ease, border-color 0.15s ease;
     }
+    .card.selected { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4), 0 10px 25px rgba(0,0,0,0.6); }
+    .card.done { opacity: 0.45; filter: grayscale(0.8); }
+    .card img { max-width: 100%; max-height: 320px; border-radius: 6px; border: 1px solid #334155; pointer-events: none; }
+    .card-footer { margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .card-note { font-size: 0.95rem; font-weight: 600; word-break: break-word; margin-right: 12px; cursor: text; user-select: text; border-radius: 4px; padding: 2px 4px; transition: background 0.15s; }
+    .card-note:hover { background: rgba(255,255,255,0.06); }
+    .card-meta { font-size: 0.7rem; color: #94a3b8; margin-top: 4px; }
+    .card-actions { display: flex; gap: 6px; align-items: center; }
+    .card-actions input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+    
+    .btn-action { background: none; border: none; color: #94a3b8; padding: 3px 6px; font-size: 0.85rem; cursor: pointer; border-radius: 4px; }
+    .btn-action:hover { background: rgba(255,255,255,0.1); color: #f8fafc; }
+    .btn-copy { color: #60a5fa; font-weight: 600; }
+    .btn-copy:hover { background: rgba(59, 130, 246, 0.2); color: #93c5fd; }
+    .btn-delete { color: #ef4444; }
+    .btn-delete:hover { background: rgba(239, 68, 68, 0.2); }
 
-    /* Infinite Grid Background */
-    #grid-bg {
-      position: absolute;
-      inset: 0;
-      background-image: 
-        linear-gradient(var(--grid-color) 1px, transparent 1px),
-        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
-      background-size: 32px 32px;
-      pointer-events: none;
-    }
-
-    /* The Pan/Zoom Transform Layer */
-    #world {
-      position: absolute;
-      top: 0;
-      left: 0;
-      transform-origin: 0 0;
-      width: 0;
-      height: 0;
-    }
-
-    /* Interactive Image Card */
-    .snap-card {
-      position: absolute;
-      background: var(--card-bg);
-      border-radius: 12px;
-      padding: 10px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-      border: 2px solid transparent;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
-      cursor: grab;
-      width: 320px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .snap-card:hover {
-      border-color: var(--accent-color);
-      box-shadow: 0 12px 36px rgba(34, 197, 94, 0.25);
-    }
-
-    .snap-card.dragging {
-      cursor: grabbing;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
-      border-color: var(--accent-color);
-    }
-
-    .snap-card img {
-      width: 100%;
-      height: auto;
-      border-radius: 8px;
-      pointer-events: none;
-      display: block;
-    }
-
-    .card-footer {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      padding: 2px 2px;
-    }
-
-    .card-info-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .location-link {
-      color: var(--accent-color);
-      font-size: 12px;
-      text-decoration: none;
-      font-weight: 600;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      max-width: 230px;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      cursor: pointer;
-    }
-
-    .location-link:hover {
-      text-decoration: underline;
-    }
-
-    .btn-delete {
-      background: none;
-      border: none;
-      color: var(--text-sub);
-      cursor: pointer;
-      font-size: 14px;
-      padding: 2px 6px;
-      border-radius: 4px;
-    }
-
-    .btn-delete:hover {
-      color: #ef4444;
-      background: rgba(239, 68, 68, 0.15);
-    }
-
-    /* Copy to Slack Button */
-    .btn-copy-slack {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      color: var(--text-main);
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: all 0.15s ease;
-      width: 100%;
-    }
-
-    .btn-copy-slack:hover {
-      background: rgba(255, 255, 255, 0.18);
-      border-color: rgba(255, 255, 255, 0.3);
-    }
-
-    .btn-copy-slack.copied {
-      background: var(--accent-color);
-      color: #000;
-      border-color: var(--accent-color);
-    }
-
-    /* Lightbox Modal (Double-click expansion) */
-    #lightbox-modal {
-      position: fixed;
-      inset: 0;
-      background: rgba(0, 0, 0, 0.85);
-      backdrop-filter: blur(8px);
-      z-index: 2000;
-      display: none;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      gap: 16px;
-      padding: 40px;
-    }
-
-    #lightbox-modal.active {
-      display: flex;
-    }
-
-    #lightbox-img {
-      max-width: 90vw;
-      max-height: 80vh;
-      border-radius: 12px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
-      border: 2px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .lightbox-toolbar {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    .lightbox-btn {
-      background: var(--accent-color);
-      color: #000;
-      text-decoration: none;
-      font-weight: 700;
-      font-size: 14px;
-      padding: 8px 18px;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-
-    .lightbox-close {
-      position: absolute;
-      top: 24px;
-      right: 28px;
-      background: rgba(255, 255, 255, 0.1);
-      border: none;
-      color: #fff;
-      font-size: 20px;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      cursor: pointer;
-    }
-
-    .lightbox-close:hover {
-      background: rgba(255, 255, 255, 0.25);
-    }
-
-    /* Empty state overlay */
+    /* Paste Guide Banner */
     #empty-state {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      text-align: center;
-      color: var(--text-sub);
-      pointer-events: none;
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      text-align: center; color: #64748b; pointer-events: none;
     }
+    #empty-state h2 { font-size: 1.3rem; margin-bottom: 8px; color: #94a3b8; }
 
-    #empty-state h2 {
-      font-size: 20px;
-      margin-bottom: 8px;
-      color: var(--text-main);
+    /* Layered Markup Modal */
+    #markup-modal {
+      position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(6px); display: none; flex-direction: column; align-items: center; justify-content: center;
     }
+    #markup-modal.active { display: flex; }
+    
+    #markup-toolbar {
+      display: flex; gap: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+      padding: 8px 14px; margin-bottom: 12px; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+      max-width: 95vw; flex-wrap: wrap; justify-content: center;
+    }
+    .tool-btn { background: #334155; border: 1px solid #475569; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 4px; }
+    .tool-btn.active { background: #3b82f6; border-color: #60a5fa; }
+    .tool-btn.select-tool.active { background: #6366f1; border-color: #818cf8; }
+    .tool-btn.eraser.active { background: #f59e0b; border-color: #fbbf24; }
+    
+    #modal-note-input {
+      background: #0f172a; border: 1px solid #475569; color: white; padding: 6px 10px;
+      border-radius: 6px; font-size: 0.85rem; width: 220px; outline: none;
+    }
+    #modal-note-input:focus { border-color: #3b82f6; }
+
+    .save-btn { background: #10b981; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 700; cursor: pointer; }
+    .cancel-btn { background: #64748b; border: none; color: white; padding: 6px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    
+    #canvas-container {
+      position: relative; max-width: 90vw; max-height: 75vh; overflow: auto;
+      border: 2px solid #334155; border-radius: 8px; background: #0b0f19;
+    }
+    #canvas-wrapper { position: relative; display: inline-block; }
+    #base-canvas { display: block; }
+    #drawing-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+    #drawing-canvas.select-mode { cursor: default; }
+    #drawing-canvas.moving-mode { cursor: move; }
+    #drawing-canvas.eraser-mode { cursor: cell; }
   </style>
 </head>
-<body>
+<body tabindex="0">
 
-  <header>
-    <div class="status-badge">📸 <b>Ctrl+V</b> to Paste | 🖱️ <b>Drag</b> to Pan | 📜 <b>Scroll</b> to Zoom | <b>Double-Click</b> to Expand</div>
-    <button class="btn-reset-view" id="btn-reset">Reset View</button>
-  </header>
+  <!-- Controls -->
+  <div id="toolbar">
+    <span class="badge">SCRATCHPAD</span>
+    <button class="btn-header" id="btn-export" onclick="exportToGoogleSheets()" title="Directly sync all cards to your Google Sheet">📊 Export to Google Sheets</button>
+    <button class="btn-excel" id="btn-export-excel" onclick="exportToExcelSheet()" title="Download Excel .xlsx with embedded thumbnails in cells">📥 Export Excel (.xlsx)</button>
+    <button class="btn-danger" onclick="clearCanvas()">🗑️ Clear All</button>
+    <div class="shortcuts">
+      <span>Snip: <kbd>Win+Shift+S</kbd></span>
+      <span>Paste: <kbd>Ctrl+V</kbd></span>
+      <span>Slack: <kbd>Select + Ctrl+C</kbd></span>
+    </div>
+  </div>
 
+  <!-- Toast Notification -->
+  <div id="toast">📋 Toast Notification</div>
+
+  <!-- Canvas Surface -->
   <div id="viewport">
-    <div id="grid-bg"></div>
-    <div id="world">
-      <div id="empty-state">
-        <h2>Empty Pinboard Canvas</h2>
-        <p>Take a snapshot in Street View and press Ctrl+V / Cmd+V to paste.</p>
+    <div id="empty-state">
+      <h2>📌 Canvas is empty</h2>
+      <p>Snip any screen region, then press <b>Ctrl + V</b> anywhere here to mark it up and add a note.</p>
+    </div>
+    <div id="world"></div>
+  </div>
+
+  <!-- Layered Markup Modal -->
+  <div id="markup-modal">
+    <div id="markup-toolbar">
+      <button class="tool-btn select-tool" id="tool-select" onclick="setTool('select')" title="Select, move, or modify any drawn markups/texts">↖️ Select / Move</button>
+      
+      <span style="color: #64748b;">|</span>
+
+      <button class="tool-btn active" id="tool-pen" onclick="setTool('pen')" title="Freehand pen">✏️ Pen</button>
+      <button class="tool-btn" id="tool-arrow" onclick="setTool('arrow')" title="Arrow pointer">↗️ Arrow</button>
+      <button class="tool-btn" id="tool-rect" onclick="setTool('rect')" title="Rectangle box">🔲 Box</button>
+      <button class="tool-btn" id="tool-text" onclick="setTool('text')" title="Callout text box (Click to place)">🔤 Text Box</button>
+      <button class="tool-btn eraser" id="tool-eraser" onclick="setTool('eraser')" title="Click drawings to erase">🧹 Eraser</button>
+      
+      <span style="color: #64748b;">|</span>
+      
+      <input type="color" id="draw-color" value="#10b981" title="Color" style="cursor: pointer; border: none; width: 28px; height: 28px; border-radius: 4px; background: none;">
+      <select id="draw-width" style="background: #334155; color: white; border: 1px solid #475569; padding: 4px 6px; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">
+        <option value="2">Thin (2px)</option>
+        <option value="4" selected>Medium (4px)</option>
+        <option value="8">Thick (8px)</option>
+      </select>
+      
+      <span style="color: #64748b;">|</span>
+      
+      <button class="tool-btn" onclick="undoMarkup()" title="Undo last shape">↩️ Undo</button>
+      <button class="tool-btn" onclick="clearAllDrawings()" title="Clear all drawings from this image">🗑️ Clear Markups</button>
+      
+      <span style="color: #64748b;">|</span>
+
+      <input type="text" id="modal-note-input" placeholder="Task / Note description..." title="Edit note attached to this screenshot">
+
+      <button class="save-btn" onclick="saveMarkupAndFinish()">💾 Save Changes</button>
+      <button class="cancel-btn" onclick="closeMarkupModal()">Cancel</button>
+    </div>
+
+    <!-- Dual Canvas Layers -->
+    <div id="canvas-container">
+      <div id="canvas-wrapper">
+        <canvas id="base-canvas"></canvas>
+        <canvas id="drawing-canvas"></canvas>
       </div>
     </div>
   </div>
 
-  <!-- Fullscreen Expand Modal -->
-  <div id="lightbox-modal">
-    <button class="lightbox-close" id="lightbox-close">✕</button>
-    <img id="lightbox-img" src="" alt="Expanded Street View Snapshot">
-    <div class="lightbox-toolbar">
-      <a id="lightbox-link" class="lightbox-btn" href="#" target="_blank" rel="noopener noreferrer">
-        📍 Open Location in Street View
-      </a>
-    </div>
-  </div>
-
   <script>
+    // ==========================================
+    // 🌐 HARDCODED GOOGLE APPS SCRIPT WEBHOOK URL
+    // ==========================================
+    const DEFAULT_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycby8yaFOhw5Fug5GqsdLHdRWkfNha95RdWS8l0-K-ilzKCVaTDrMVOiTesoQQZM7J4WCkw/exec";
+
+    // ==========================================
+    // 💽 0. UNLIMITED INDEXEDDB STORAGE ENGINE
+    // ==========================================
+    const DB_NAME = 'VisualScratchpadDB';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'cards';
+    let db = null;
+    let cards = [];
+
+    function initDB() {
+      return new Promise((resolve) => {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = (e) => {
+          const dbInstance = e.target.result;
+          if (!dbInstance.objectStoreNames.contains(STORE_NAME)) {
+            dbInstance.createObjectStore(STORE_NAME, { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = async (e) => {
+          db = e.target.result;
+          await loadAllCards();
+          resolve();
+        };
+        req.onerror = () => {
+          cards = JSON.parse(localStorage.getItem('scratchpad_cards') || '[]');
+          cards.forEach(renderCard);
+          updateEmptyState();
+          resolve();
+        };
+      });
+    }
+
+    function dbSaveCard(card) {
+      if (!db) return;
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).put(card);
+    }
+
+    function dbDeleteCard(cardId) {
+      if (!db) return;
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).delete(cardId);
+    }
+
+    function dbClearCards() {
+      if (!db) return;
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).clear();
+    }
+
+    async function loadAllCards() {
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const req = tx.objectStore(STORE_NAME).getAll();
+        req.onsuccess = () => {
+          cards = req.result || [];
+          world.innerHTML = '';
+          cards.forEach(renderCard);
+          updateEmptyState();
+          resolve();
+        };
+        req.onerror = () => resolve();
+      });
+    }
+
+    // ==========================================
+    // 🌌 1. PAN & ZOOM ENGINE
+    // ==========================================
     const viewport = document.getElementById('viewport');
     const world = document.getElementById('world');
-    const gridBg = document.getElementById('grid-bg');
     const emptyState = document.getElementById('empty-state');
-    const btnReset = document.getElementById('btn-reset');
+    const toast = document.getElementById('toast');
 
-    const lightbox = document.getElementById('lightbox-modal');
-    const lightboxImg = document.getElementById('lightbox-img');
-    const lightboxLink = document.getElementById('lightbox-link');
-    const lightboxClose = document.getElementById('lightbox-close');
-
-    // Pan & Zoom State
+    let panX = window.innerWidth / 2;
+    let panY = window.innerHeight / 2;
     let scale = 1;
-    let panX = 0;
-    let panY = 0;
-    const MIN_SCALE = 0.15;
-    const MAX_SCALE = 4.0;
     let isPanning = false;
-    let startX = 0, startY = 0;
+    let startX, startY;
+    let selectedCardId = null;
+
+    function showToast(msg) {
+      if (msg) toast.innerText = msg;
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 3000);
+    }
 
     function updateTransform() {
       world.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
-      gridBg.style.backgroundPosition = `${panX}px ${panY}px`;
-      gridBg.style.backgroundSize = `${32 * scale}px ${32 * scale}px`;
     }
+    updateTransform();
 
-    // --- Pan Controls ---
     viewport.addEventListener('mousedown', (e) => {
-      if (e.target === viewport || e.target === gridBg || e.button === 1 || e.spaceKey) {
+      if (e.target === viewport || e.target === world) {
+        selectCard(null);
+      }
+
+      if (e.button === 2 || e.button === 1 || (e.button === 0 && e.target === viewport)) {
         isPanning = true;
         startX = e.clientX - panX;
         startY = e.clientY - panY;
@@ -375,209 +305,828 @@
       viewport.classList.remove('panning');
     });
 
-    // --- Zoom Controls (Cursor-Centered) ---
+    viewport.addEventListener('contextmenu', e => e.preventDefault());
+
     viewport.addEventListener('wheel', (e) => {
       e.preventDefault();
-
-      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-      const newScale = Math.min(Math.max(scale * zoomFactor, MIN_SCALE), MAX_SCALE);
-
-      if (newScale !== scale) {
-        const mouseX = e.clientX;
-        const mouseY = e.clientY;
-
-        panX = mouseX - (mouseX - panX) * (newScale / scale);
-        panY = mouseY - (mouseY - panY) * (newScale / scale);
-        scale = newScale;
-
-        updateTransform();
-      }
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      const mouseX = e.clientX;
+      const mouseY = e.clientY;
+      panX = mouseX - (mouseX - panX) * zoomFactor;
+      panY = mouseY - (mouseY - panY) * zoomFactor;
+      scale *= zoomFactor;
+      updateTransform();
     }, { passive: false });
 
-    // Reset View
-    btnReset.addEventListener('click', () => {
-      scale = 1;
-      panX = 0;
-      panY = 0;
-      updateTransform();
-    });
+    // ==========================================
+    // 🎨 2. LAYERED VECTOR DRAWING & CALLOUT ENGINE
+    // ==========================================
+    const markupModal = document.getElementById('markup-modal');
+    const baseCanvas = document.getElementById('base-canvas');
+    const baseCtx = baseCanvas.getContext('2d');
+    const drawingCanvas = document.getElementById('drawing-canvas');
+    const drawCtx = drawingCanvas.getContext('2d');
+    const modalNoteInput = document.getElementById('modal-note-input');
 
-    // --- Smart Paste Handler ---
-    let pasteIndex = 0;
-    window.addEventListener('paste', async (e) => {
-      e.preventDefault();
-      const clipboardItems = e.clipboardData.items;
-      let imageFile = null;
-      let textUrl = '';
+    let currentTool = 'pen';
+    let isDrawing = false;
+    let currentShape = null;
+    let currentShapesList = [];
+    let rawBaseImageSrc = null;
+    let editingCardId = null;
 
-      for (let i = 0; i < clipboardItems.length; i++) {
-        const item = clipboardItems[i];
-        if (item.type.indexOf('image') !== -1) {
-          imageFile = item.getAsFile();
-        } else if (item.type === 'text/plain') {
-          item.getAsString((text) => {
-            if (text.startsWith('http')) textUrl = text;
-          });
-        }
+    let selectedShapeIndex = -1;
+    let isDraggingShape = false;
+    let dragOffset = { x: 0, y: 0 };
+
+    function setTool(tool) {
+      currentTool = tool;
+      document.querySelectorAll('#markup-toolbar .tool-btn').forEach(btn => btn.classList.remove('active'));
+      const activeBtn = document.getElementById(`tool-${tool}`);
+      if (activeBtn) activeBtn.classList.add('active');
+      
+      drawingCanvas.classList.toggle('select-mode', tool === 'select');
+      drawingCanvas.classList.toggle('eraser-mode', tool === 'eraser');
+      
+      if (tool !== 'select') {
+        selectedShapeIndex = -1;
+        redrawVectorLayer();
       }
-
-      if (imageFile) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const spawnX = (window.innerWidth / 2 - panX) / scale - 160 + (pasteIndex * 25);
-          const spawnY = (window.innerHeight / 2 - panY) / scale - 120 + (pasteIndex * 25);
-          pasteIndex = (pasteIndex + 1) % 8;
-
-          createImageCard(event.target.result, textUrl || 'https://maps.google.com', spawnX, spawnY);
-        };
-        reader.readAsDataURL(imageFile);
-      }
-    });
-
-    // --- Card Creation & Draggable ---
-    function createImageCard(imageSrc, url, x, y) {
-      if (emptyState) emptyState.style.display = 'none';
-
-      const card = document.createElement('div');
-      card.className = 'snap-card';
-      card.style.left = `${x}px`;
-      card.style.top = `${y}px`;
-
-      card.innerHTML = `
-        <img src="${imageSrc}" alt="Street View Snapshot" />
-        <div class="card-footer">
-          <div class="card-info-row">
-            <a class="location-link" href="${url}" target="_blank" rel="noopener noreferrer" title="${url}">
-              📍 Street View Location
-            </a>
-            <button class="btn-delete" title="Delete card">✕</button>
-          </div>
-          <button class="btn-copy-slack" title="Copy image and link for Slack">
-            📋 Copy for Slack
-          </button>
-        </div>
-      `;
-
-      // Double-Click to Expand/Focus Lightbox
-      card.addEventListener('dblclick', (e) => {
-        e.stopPropagation();
-        openLightbox(imageSrc, url);
-      });
-
-      // Copy for Slack Button Handler
-      const copyBtn = card.querySelector('.btn-copy-slack');
-      copyBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        await copyToSlack(imageSrc, url, copyBtn);
-      });
-
-      // Enable dragging inside transformed world
-      makeDraggableInWorld(card);
-
-      // Handle delete
-      card.querySelector('.btn-delete').addEventListener('click', (e) => {
-        e.stopPropagation();
-        card.remove();
-        if (world.querySelectorAll('.snap-card').length === 0) {
-          emptyState.style.display = 'block';
-        }
-      });
-
-      world.appendChild(card);
     }
 
-    // Helper: Copy Image + Link to Clipboard formatted for Slack
-    async function copyToSlack(imageSrc, url, buttonElement) {
-      try {
-        const res = await fetch(imageSrc);
-        const imageBlob = await res.blob();
+    
+    let tempCardUrl = ''; // Temporary holder for URL during markup
 
-        const htmlContent = `<a href="${url}"><img src="${imageSrc}" alt="Street View Snapshot" /></a><br><p>📍 <a href="${url}">Street View Location</a></p>`;
-        const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
-        const textBlob = new Blob([`📍 Street View: ${url}`], { type: 'text/plain' });
+    function openMarkupModal(originalBaseImg, existingShapes = [], noteText = "", cardId = null, cardUrl = '') {
+
+      editingCardId = cardId;
+      tempCardUrl = cardUrl;
+      rawBaseImageSrc = originalBaseImg;
+      currentShapesList = JSON.parse(JSON.stringify(existingShapes));
+      modalNoteInput.value = noteText;
+      selectedShapeIndex = -1;
+
+      const img = new Image();
+      img.src = originalBaseImg;
+      img.onload = () => {
+        baseCanvas.width = img.width;
+        baseCanvas.height = img.height;
+        drawingCanvas.width = img.width;
+        drawingCanvas.height = img.height;
+
+        baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height);
+        baseCtx.drawImage(img, 0, 0);
+
+        redrawVectorLayer();
+        markupModal.classList.add('active');
+        setTimeout(() => modalNoteInput.focus(), 100);
+      };
+    }
+
+    function redrawVectorLayer() {
+      drawCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+      currentShapesList.forEach((shape, index) => {
+        drawSingleShape(drawCtx, shape);
+        if (currentTool === 'select' && index === selectedShapeIndex) {
+          drawSelectionBounds(drawCtx, shape);
+        }
+      });
+    }
+
+    function measureTextBox(ctx, shape) {
+      ctx.font = "bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      const lines = shape.text.split('\n');
+      let maxTextWidth = 0;
+      lines.forEach(l => {
+        const w = ctx.measureText(l).width;
+        if (w > maxTextWidth) maxTextWidth = w;
+      });
+      const padX = 14;
+      const padY = 10;
+      const lineHeight = 18;
+      const totalW = Math.max(80, maxTextWidth + (padX * 2));
+      const totalH = (lines.length * lineHeight) + (padY * 2);
+      return { w: totalW, h: totalH, padX, padY, lineHeight, lines };
+    }
+
+    function drawSingleShape(ctx, shape) {
+      ctx.save();
+      ctx.strokeStyle = shape.color;
+      ctx.fillStyle = shape.color;
+      ctx.lineWidth = shape.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (shape.type === 'pen') {
+        if (shape.points.length < 2) { ctx.restore(); return; }
+        ctx.beginPath();
+        ctx.moveTo(shape.points[0].x, shape.points[0].y);
+        for (let i = 1; i < shape.points.length; i++) {
+          ctx.lineTo(shape.points[i].x, shape.points[i].y);
+        }
+        ctx.stroke();
+      } else if (shape.type === 'rect') {
+        ctx.strokeRect(shape.x, shape.y, shape.w, shape.h);
+      } else if (shape.type === 'arrow') {
+        drawArrow(shape.x1, shape.y1, shape.x2, shape.y2, ctx, shape.width, shape.color);
+      } else if (shape.type === 'textbox') {
+        const metrics = measureTextBox(ctx, shape);
+        const x = shape.x;
+        const y = shape.y;
+        const w = metrics.w;
+        const h = metrics.h;
+        const radius = 8;
+
+        // Shadow
+        ctx.shadowColor = 'rgba(0,0,0,0.45)';
+        ctx.shadowBlur = 10;
+        ctx.shadowOffsetY = 4;
+
+        // Container
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, radius);
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+        ctx.fill();
+
+        // Border
+        ctx.shadowColor = 'transparent';
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = shape.color || '#10b981';
+        ctx.stroke();
+
+        // Typography
+        ctx.font = "bold 14px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+        ctx.fillStyle = "#ffffff";
+        ctx.textBaseline = "top";
+        metrics.lines.forEach((line, i) => {
+          ctx.fillText(line, x + metrics.padX, y + metrics.padY + (i * metrics.lineHeight));
+        });
+      }
+      ctx.restore();
+    }
+
+    function drawArrow(fromx, fromy, tox, toy, ctx, width, color) {
+      const headlen = width * 4 + 8;
+      const angle = Math.atan2(toy - fromy, tox - fromx);
+      ctx.beginPath();
+      ctx.moveTo(fromx, fromy);
+      ctx.lineTo(tox, toy);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(tox, toy);
+      ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    function drawSelectionBounds(ctx, shape) {
+      ctx.save();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+
+      const bbox = getShapeBoundingBox(ctx, shape);
+      const pad = 6;
+      ctx.strokeRect(bbox.x - pad, bbox.y - pad, bbox.w + (pad * 2), bbox.h + (pad * 2));
+
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(bbox.x - pad - 3, bbox.y - pad - 3, 6, 6);
+      ctx.fillRect(bbox.x + bbox.w + pad - 3, bbox.y - pad - 3, 6, 6);
+      ctx.fillRect(bbox.x - pad - 3, bbox.y + bbox.h + pad - 3, 6, 6);
+      ctx.fillRect(bbox.x + bbox.w + pad - 3, bbox.y + bbox.h + pad - 3, 6, 6);
+      ctx.restore();
+    }
+
+    function getShapeBoundingBox(ctx, shape) {
+      if (shape.type === 'textbox') {
+        const m = measureTextBox(ctx, shape);
+        return { x: shape.x, y: shape.y, w: m.w, h: m.h };
+      } else if (shape.type === 'rect') {
+        return {
+          x: Math.min(shape.x, shape.x + shape.w),
+          y: Math.min(shape.y, shape.y + shape.h),
+          w: Math.abs(shape.w),
+          h: Math.abs(shape.h)
+        };
+      } else if (shape.type === 'arrow') {
+        const minX = Math.min(shape.x1, shape.x2);
+        const minY = Math.min(shape.y1, shape.y2);
+        return { x: minX, y: minY, w: Math.abs(shape.x2 - shape.x1), h: Math.abs(shape.y2 - shape.y1) };
+      } else if (shape.type === 'pen') {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        shape.points.forEach(p => {
+          if (p.x < minX) minX = p.x;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.y > maxY) maxY = p.y;
+        });
+        return { x: minX, y: minY, w: Math.max(10, maxX - minX), h: Math.max(10, maxY - minY) };
+      }
+      return { x: 0, y: 0, w: 0, h: 0 };
+    }
+
+    function hitTestShape(x, y) {
+      for (let i = currentShapesList.length - 1; i >= 0; i--) {
+        const shape = currentShapesList[i];
+        const bbox = getShapeBoundingBox(drawCtx, shape);
+        const pad = 10;
+        if (x >= bbox.x - pad && x <= bbox.x + bbox.w + pad && y >= bbox.y - pad && y <= bbox.y + bbox.h + pad) {
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function undoMarkup() {
+      if (currentShapesList.length > 0) {
+        currentShapesList.pop();
+        selectedShapeIndex = -1;
+        redrawVectorLayer();
+      }
+    }
+
+    function clearAllDrawings() {
+      currentShapesList = [];
+      selectedShapeIndex = -1;
+      redrawVectorLayer();
+    }
+
+    function closeMarkupModal() {
+      markupModal.classList.remove('active');
+      editingCardId = null;
+      document.body.focus();
+    }
+
+    function getCanvasCoords(e) {
+      const rect = drawingCanvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - rect.left) * (drawingCanvas.width / rect.width),
+        y: (e.clientY - rect.top) * (drawingCanvas.height / rect.height)
+      };
+    }
+
+    function eraseAtPoint(x, y) {
+      const idx = hitTestShape(x, y);
+      if (idx !== -1) {
+        currentShapesList.splice(idx, 1);
+        selectedShapeIndex = -1;
+        redrawVectorLayer();
+      }
+    }
+
+    // Canvas Interactions
+    drawingCanvas.addEventListener('mousedown', (e) => {
+      const coords = getCanvasCoords(e);
+      const color = document.getElementById('draw-color').value;
+      const width = parseInt(document.getElementById('draw-width').value);
+
+      if (currentTool === 'select') {
+        const hitIdx = hitTestShape(coords.x, coords.y);
+        selectedShapeIndex = hitIdx;
+        if (hitIdx !== -1) {
+          isDraggingShape = true;
+          dragOffset = { x: coords.x, y: coords.y };
+          drawingCanvas.classList.add('moving-mode');
+        }
+        redrawVectorLayer();
+        return;
+      }
+
+      if (currentTool === 'text') {
+        const userText = prompt("Enter text for callout box:", "Header Title");
+        if (userText && userText.trim()) {
+          const newTextBox = {
+            type: 'textbox',
+            x: coords.x,
+            y: coords.y,
+            text: userText.trim(),
+            color: color,
+            width: width
+          };
+          currentShapesList.push(newTextBox);
+          selectedShapeIndex = currentShapesList.length - 1;
+          setTool('select');
+          redrawVectorLayer();
+        }
+        return;
+      }
+
+      if (currentTool === 'eraser') {
+        eraseAtPoint(coords.x, coords.y);
+        return;
+      }
+
+      isDrawing = true;
+      if (currentTool === 'pen') {
+        currentShape = { type: 'pen', points: [coords], color, width };
+      } else if (currentTool === 'rect') {
+        currentShape = { type: 'rect', startX: coords.x, startY: coords.y, x: coords.x, y: coords.y, w: 0, h: 0, color, width };
+      } else if (currentTool === 'arrow') {
+        currentShape = { type: 'arrow', x1: coords.x, y1: coords.y, x2: coords.x, y2: coords.y, color, width };
+      }
+    });
+
+    drawingCanvas.addEventListener('mousemove', (e) => {
+      const coords = getCanvasCoords(e);
+
+      if (currentTool === 'select' && isDraggingShape && selectedShapeIndex !== -1) {
+        const dx = coords.x - dragOffset.x;
+        const dy = coords.y - dragOffset.y;
+        dragOffset = { x: coords.x, y: coords.y };
+
+        const shape = currentShapesList[selectedShapeIndex];
+        if (shape.type === 'textbox' || shape.type === 'rect') {
+          shape.x += dx;
+          shape.y += dy;
+        } else if (shape.type === 'arrow') {
+          shape.x1 += dx;
+          shape.y1 += dy;
+          shape.x2 += dx;
+          shape.y2 += dy;
+        } else if (shape.type === 'pen') {
+          shape.points.forEach(p => { p.x += dx; p.y += dy; });
+        }
+        redrawVectorLayer();
+        return;
+      }
+
+      if (!isDrawing) return;
+
+      if (currentTool === 'pen') {
+        currentShape.points.push(coords);
+        redrawVectorLayer();
+        drawSingleShape(drawCtx, currentShape);
+      } else if (currentTool === 'rect') {
+        currentShape.x = Math.min(currentShape.startX, coords.x);
+        currentShape.y = Math.min(currentShape.startY, coords.y);
+        currentShape.w = Math.abs(coords.x - currentShape.startX);
+        currentShape.h = Math.abs(coords.y - currentShape.startY);
+        redrawVectorLayer();
+        drawSingleShape(drawCtx, currentShape);
+      } else if (currentTool === 'arrow') {
+        currentShape.x2 = coords.x;
+        currentShape.y2 = coords.y;
+        redrawVectorLayer();
+        drawSingleShape(drawCtx, currentShape);
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (isDraggingShape) {
+        isDraggingShape = false;
+        drawingCanvas.classList.remove('moving-mode');
+      }
+
+      if (isDrawing) {
+        isDrawing = false;
+        if (currentShape) {
+          currentShapesList.push(currentShape);
+          currentShape = null;
+          redrawVectorLayer();
+        }
+      }
+    });
+
+    drawingCanvas.addEventListener('dblclick', (e) => {
+      if (currentTool !== 'select') return;
+      const coords = getCanvasCoords(e);
+      const hitIdx = hitTestShape(coords.x, coords.y);
+      if (hitIdx !== -1 && currentShapesList[hitIdx].type === 'textbox') {
+        const shape = currentShapesList[hitIdx];
+        const newText = prompt("Edit callout text:", shape.text);
+        if (newText !== null && newText.trim()) {
+          shape.text = newText.trim();
+          redrawVectorLayer();
+        }
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (!markupModal.classList.contains('active')) return;
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedShapeIndex !== -1) {
+        if (document.activeElement !== modalNoteInput) {
+          e.preventDefault();
+          currentShapesList.splice(selectedShapeIndex, 1);
+          selectedShapeIndex = -1;
+          redrawVectorLayer();
+          showToast("🗑️ Selected markup deleted");
+        }
+      }
+    });
+
+    function generateMergedPreview() {
+      const mergedCanvas = document.createElement('canvas');
+      mergedCanvas.width = baseCanvas.width;
+      mergedCanvas.height = baseCanvas.height;
+      const mCtx = mergedCanvas.getContext('2d');
+      mCtx.drawImage(baseCanvas, 0, 0);
+
+      currentShapesList.forEach(shape => drawSingleShape(mCtx, shape));
+      return mergedCanvas.toDataURL('image/png');
+    }
+
+    function saveMarkupAndFinish() {
+      const mergedPreviewUrl = generateMergedPreview();
+      const updatedNote = modalNoteInput.value.trim() || "Untitled Note";
+      const targetCardId = editingCardId;
+
+      closeMarkupModal();
+
+      if (targetCardId) {
+        const card = cards.find(c => c.id === targetCardId);
+        if (card) {
+          card.img = mergedPreviewUrl;
+          card.originalBaseImg = rawBaseImageSrc;
+          card.shapes = JSON.parse(JSON.stringify(currentShapesList));
+          card.note = updatedNote;
+          card.url = tempCardUrl || card.url; // Persist URL on edit
+          
+          const cardEl = document.getElementById(`card-${card.id}`);
+          if (cardEl) {
+            const imgEl = cardEl.querySelector('img');
+            const noteEl = cardEl.querySelector('.card-note');
+            if (imgEl) imgEl.src = mergedPreviewUrl;
+            if (noteEl) noteEl.innerText = updatedNote;
+          }
+          dbSaveCard(card);
+          showToast("💾 Changes saved to card!");
+        }
+      } else {
+        createAndAddCard(mergedPreviewUrl, rawBaseImageSrc, currentShapesList, updatedNote, tempCardUrl);
+      }
+    }
+
+    // ==========================================
+    // 📊 3. DIRECT GOOGLE SHEETS WEBHOOK EXPORT
+    // ==========================================
+    async function exportToGoogleSheets() {
+      if (cards.length === 0) {
+        alert("Canvas is empty! Add some screenshots first.");
+        return;
+      }
+
+      const webhookUrl = DEFAULT_SHEETS_WEBHOOK_URL;
+      const btn = document.getElementById('btn-export');
+      btn.innerText = "⏳ Exporting to Sheets...";
+      btn.disabled = true;
+
+      try {
+        const payload = JSON.stringify({ tasks: cards });
+
+        await fetch(webhookUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'payload=' + encodeURIComponent(payload)
+        });
+
+        showToast(`✅ Exported ${cards.length} cards directly to Google Sheets!`);
+      } catch (err) {
+        console.error("Export error:", err);
+        alert("Export submitted! Check your Google Sheet in a few moments.");
+      } finally {
+        btn.innerText = "📊 Export to Google Sheets";
+        btn.disabled = false;
+      }
+    }
+
+    // ==========================================
+    // 📥 4. IN-CELL ASPECT-RATIO EXCEL (.XLSX) EXPORT
+    // ==========================================
+    function getImageDimensions(src) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+      });
+    }
+
+    async function exportToExcelSheet() {
+      if (cards.length === 0) {
+        alert("Canvas is empty! Add some screenshots first.");
+        return;
+      }
+
+      const btn = document.getElementById('btn-export-excel');
+      btn.innerText = "⏳ Generating Excel...";
+      btn.disabled = true;
+
+      try {
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Tasks');
+
+        worksheet.columns = [
+          { header: 'Status', key: 'status', width: 12 },
+          { header: 'Date', key: 'date', width: 22 },
+          { header: 'Description', key: 'description', width: 42 },
+          { header: 'Thumbnail Image', key: 'thumbnail', width: 38 }
+        ];
+
+        const headerRow = worksheet.getRow(1);
+        headerRow.font = { bold: true, color: { argb: 'FFFFFF' } };
+        headerRow.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: '1E293B' }
+        };
+        headerRow.height = 28;
+        headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        const MAX_BOX_WIDTH = 220;
+        const MAX_BOX_HEIGHT = 120;
+
+        for (let i = 0; i < cards.length; i++) {
+          const card = cards[i];
+          const rowIndex = i + 2;
+
+          const dims = await getImageDimensions(card.img);
+          const aspect = dims.width / dims.height;
+
+          let targetW, targetH;
+          if (aspect >= (MAX_BOX_WIDTH / MAX_BOX_HEIGHT)) {
+            targetW = MAX_BOX_WIDTH;
+            targetH = Math.round(MAX_BOX_WIDTH / aspect);
+          } else {
+            targetH = MAX_BOX_HEIGHT;
+            targetW = Math.round(MAX_BOX_HEIGHT * aspect);
+          }
+
+          const row = worksheet.addRow({
+            status: card.done ? true : false,
+            date: card.timestamp,
+            description: card.note
+          });
+
+          row.height = Math.max(65, Math.round(targetH * 0.75 + 15));
+          row.alignment = { vertical: 'middle', wrapText: true };
+
+          const statusCell = worksheet.getCell(`A${rowIndex}`);
+          statusCell.alignment = { vertical: 'middle', horizontal: 'center' };
+          statusCell.dataValidation = {
+            type: 'list',
+            allowBlank: true,
+            formulae: ['"TRUE,FALSE"']
+          };
+
+          const imageId = workbook.addImage({
+            base64: card.img,
+            extension: 'png',
+          });
+
+          worksheet.addImage(imageId, {
+            tl: { col: 3.1, row: rowIndex - 0.85 },
+            ext: { width: targetW, height: targetH }
+          });
+        }
+
+        const buffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        saveAs(blob, `Scratchpad_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+
+        showToast("✅ Excel file downloaded with in-cell thumbnails!");
+      } catch (err) {
+        console.error(err);
+        alert("Error exporting Excel file: " + err.message);
+      } finally {
+        btn.innerText = "📥 Export Excel (.xlsx)";
+        btn.disabled = false;
+      }
+    }
+
+    // ==========================================
+    // 📋 5. NATIVE BLOB SLACK CLIPBOARD EXPORT (FIXED)
+    // ==========================================
+    function dataUrlToBlob(dataUrl) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.src = dataUrl;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || img.width;
+          canvas.height = img.naturalHeight || img.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => resolve(blob), 'image/png');
+        };
+      });
+    }
+
+    async function copyCardToClipboardForSlack(cardId, url) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+
+      if (!window.isSecureContext || !navigator.clipboard || !window.ClipboardItem) {
+        alert("⚠️ Clipboard copy requires a secure context (HTTPS or localhost).");
+        return;
+      }
+
+      try {
+        const imageBlob = await dataUrlToBlob(card.img);
+        // Use the Street View URL instead of the note
+        const textBlob = new Blob([url || ''], { type: 'text/plain' });
 
         const clipboardItem = new ClipboardItem({
           'image/png': imageBlob,
-          'text/html': htmlBlob,
           'text/plain': textBlob
         });
 
         await navigator.clipboard.write([clipboardItem]);
-
-        // Feedback on button
-        const originalText = buttonElement.innerHTML;
-        buttonElement.classList.add('copied');
-        buttonElement.innerHTML = '✅ Copied to Clipboard!';
-
-        setTimeout(() => {
-          buttonElement.classList.remove('copied');
-          buttonElement.innerHTML = originalText;
-        }, 1800);
+        showToast("📋 Copied image & URL! Paste (Ctrl+V) directly into Slack.");
       } catch (err) {
-        console.error('Failed to copy item:', err);
-        alert('⚠️ Unable to copy to clipboard directly.');
+        console.warn("Multi-mime copy failed, trying image-only copy:", err);
+        try {
+          const imageBlob = await dataUrlToBlob(card.img);
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': imageBlob })]);
+          showToast("📋 Copied image to clipboard! The URL could not be included.");
+        } catch (fallbackErr) {
+          console.error("Clipboard blocked:", fallbackErr);
+          alert("Clipboard write failed: " + fallbackErr.message);
+        }
       }
     }
 
-    function makeDraggableInWorld(element) {
-      let isDragging = false;
-      let startMouseX = 0, startMouseY = 0;
-      let cardInitX = 0, cardInitY = 0;
-
-      element.addEventListener('mousedown', (e) => {
-        if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON' || e.button !== 0) return;
-        e.stopPropagation();
-
-        isDragging = true;
-        element.classList.add('dragging');
-        startMouseX = e.clientX;
-        startMouseY = e.clientY;
-        cardInitX = parseFloat(element.style.left) || 0;
-        cardInitY = parseFloat(element.style.top) || 0;
-
-        const onMouseMove = (moveEvent) => {
-          if (!isDragging) return;
-          const deltaX = (moveEvent.clientX - startMouseX) / scale;
-          const deltaY = (moveEvent.clientY - startMouseY) / scale;
-          element.style.left = `${cardInitX + deltaX}px`;
-          element.style.top = `${cardInitY + deltaY}px`;
-        };
-
-        const onMouseUp = () => {
-          isDragging = false;
-          element.classList.remove('dragging');
-          window.removeEventListener('mousemove', onMouseMove);
-          window.removeEventListener('mouseup', onMouseUp);
-        };
-
-        window.addEventListener('mousemove', onMouseMove);
-        window.addEventListener('mouseup', onMouseUp);
-      });
-    }
-
-    // --- Lightbox Modal ---
-    function openLightbox(src, url) {
-      lightboxImg.src = src;
-      lightboxLink.href = url;
-      lightbox.classList.add('active');
-    }
-
-    function closeLightbox() {
-      lightbox.classList.remove('active');
-      lightboxImg.src = '';
-    }
-
-    lightboxClose.addEventListener('click', closeLightbox);
-    lightbox.addEventListener('click', (e) => {
-      if (e.target === lightbox) closeLightbox();
-    });
-
+    // Global Keyboard Shortcuts (Ctrl+C for Slack)
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') closeLightbox();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && selectedCardId) {
+        if (document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+          e.preventDefault();
+          const card = cards.find(c => c.id === selectedCardId); if (card) copyCardToClipboardForSlack(selectedCardId, card.url);
+        }
+      }
     });
 
-    // Initial render
-    updateTransform();
+    // Global Paste Listener
+    window.addEventListener('paste', (e) => {
+      if (markupModal.classList.contains('active')) return;
+      e.preventDefault();
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      let imageFile = null;
+      let textUrl = '';
+
+      const textItems = [];
+      for (const item of items) {
+        if (item.type.indexOf('image') === 0) {
+          imageFile = item.getAsFile();
+        } else if (item.type === 'text/plain') {
+          textItems.push(new Promise(resolve => item.getAsString(resolve)));
+        }
+      }
+
+      Promise.all(textItems).then(texts => {
+        textUrl = texts.find(t => t && t.startsWith('http')) || '';
+        if (imageFile) {
+          const reader = new FileReader();
+          reader.onload = (event) => openMarkupModal(event.target.result, [], "", null, textUrl);
+          reader.readAsDataURL(imageFile);
+        }
+      });
+    });
+
+    // ==========================================
+    // 🗂️ 6. TASK CARD LOGIC
+    // ==========================================
+    function selectCard(cardId) {
+      selectedCardId = cardId;
+      document.querySelectorAll('.card').forEach(el => el.classList.remove('selected'));
+      if (cardId) {
+        const el = document.getElementById(`card-${cardId}`);
+        if (el) el.classList.add('selected');
+      }
+    }
+
+    function updateEmptyState() {
+      emptyState.style.display = cards.length === 0 ? 'block' : 'none';
+    }
+
+    function createAndAddCard(mergedImg, originalBaseImg, shapes, note, url) {
+      const spawnX = (-panX + (window.innerWidth / 2)) / scale - 160;
+      const spawnY = (-panY + (window.innerHeight / 2)) / scale - 120;
+
+      const newCard = {
+        id: Date.now().toString(),
+        img: mergedImg,
+        originalBaseImg: originalBaseImg,
+        shapes: shapes,
+        note: note,
+        url: url || '', // <<<<< Store the URL here
+        timestamp: new Date().toLocaleDateString() + " " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        x: spawnX,
+        y: spawnY,
+        done: false
+      };
+
+      cards.push(newCard);
+      dbSaveCard(newCard);
+      renderCard(newCard);
+      selectCard(newCard.id);
+      updateEmptyState();
+    }
+
+    function editCard(cardId) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+      openMarkupModal(card.originalBaseImg || card.img, card.shapes || [], card.note, card.id, card.url);
+    }
+
+    function editNoteInline(cardId) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) return;
+      const newNote = prompt("Edit Task / Note:", card.note);
+      if (newNote !== null) {
+        card.note = newNote.trim() || "Untitled Note";
+        const noteEl = document.querySelector(`#card-${card.id} .card-note`);
+        if (noteEl) noteEl.innerText = card.note;
+        dbSaveCard(card);
+        showToast("📝 Note updated!");
+      }
+    }
+
+    function renderCard(card) {
+      const el = document.createElement('div');
+      el.className = `card ${card.done ? 'done' : ''} ${selectedCardId === card.id ? 'selected' : ''}`;
+      el.id = `card-${card.id}`;
+      el.style.left = `${card.x}px`;
+      el.style.top = `${card.y}px`;
+
+      el.innerHTML = `
+        <img src="${card.img}">
+        <div class="card-footer">
+          <div>
+            <div class="card-note" title="Double-click to edit note" ondblclick="editNoteInline('${card.id}')">${card.note}</div>
+            <div class="card-meta">${card.timestamp}</div>
+          </div>
+          <div class="card-actions">
+            <button class="btn-action btn-copy" title="Copy Image & Note for Slack (Ctrl+C)" onclick="copyCardToClipboardForSlack('${card.id}', '${card.url}')">📋 Slack</button>
+            <button class="btn-action" title="Modify Screenshot & Markups" onclick="editCard('${card.id}')">✏️</button>
+            <input type="checkbox" ${card.done ? 'checked' : ''} onchange="toggleDone('${card.id}')">
+            <button class="btn-action btn-delete" title="Delete" onclick="deleteCard('${card.id}')">✕</button>
+          </div>
+        </div>
+      `;
+
+      let isDragging = false, dragStartX, dragStartY;
+      el.addEventListener('mousedown', (e) => {
+        selectCard(card.id);
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON' || e.target.classList.contains('card-note')) return;
+        isDragging = true;
+        dragStartX = e.clientX - (card.x * scale);
+        dragStartY = e.clientY - (card.y * scale);
+        e.stopPropagation();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        card.x = (e.clientX - dragStartX) / scale;
+        card.y = (e.clientY - dragStartY) / scale;
+        el.style.left = `${card.x}px`;
+        el.style.top = `${card.y}px`;
+      });
+
+      window.addEventListener('mouseup', () => {
+        if (isDragging) {
+          isDragging = false;
+          dbSaveCard(card);
+        }
+      });
+
+      world.appendChild(el);
+    }
+
+    function toggleDone(id) {
+      const card = cards.find(c => c.id === id);
+      if (card) {
+        card.done = !card.done;
+        document.getElementById(`card-${id}`).classList.toggle('done');
+        dbSaveCard(card);
+      }
+    }
+
+    function deleteCard(id) {
+      cards = cards.filter(c => c.id !== id);
+      document.getElementById(`card-${id}`).remove();
+      if (selectedCardId === id) selectedCardId = null;
+      dbDeleteCard(id);
+      updateEmptyState();
+    }
+
+    function clearCanvas() {
+      if (confirm("Clear all cards from canvas?")) {
+        cards = [];
+        world.innerHTML = '';
+        selectedCardId = null;
+        dbClearCards();
+        updateEmptyState();
+      }
+    }
+
+    // Initialize Database on Startup
+    initDB();
   </script>
 </body>
 </html>
