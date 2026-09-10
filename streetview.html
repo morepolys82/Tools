@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Street View Pinboard Canvas</title>
+  <style>
+    :root {
+      --bg-color: #121316;
+      --grid-color: rgba(255, 255, 255, 0.06);
+      --card-bg: #1e2025;
+      --accent-color: #22c55e; /* Default green accent */
+      --text-main: #f3f4f6;
+      --text-sub: #9ca3af;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* Top Floating Toolbar */
+    header {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(30, 32, 37, 0.85);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 8px 22px;
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      z-index: 1000;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+    }
+
+    .status-badge {
+      font-size: 13px;
+      color: var(--text-sub);
+    }
+
+    .status-badge b {
+      color: var(--accent-color);
+    }
+
+    .btn-reset-view {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-main);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .btn-reset-view:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Infinite Canvas Viewport */
+    #viewport {
+      position: absolute;
+      inset: 0;
+      cursor: grab;
+      overflow: hidden;
+    }
+
+    #viewport.panning {
+      cursor: grabbing;
+    }
+
+    /* Infinite Grid Background */
+    #grid-bg {
+      position: absolute;
+      inset: 0;
+      background-image: 
+        linear-gradient(var(--grid-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+    }
+
+    /* The Pan/Zoom Transform Layer */
+    #world {
+      position: absolute;
+      top: 0;
+      left: 0;
+      transform-origin: 0 0;
+      width: 0;
+      height: 0;
+    }
+
+    /* Interactive Image Card */
+    .snap-card {
+      position: absolute;
+      background: var(--card-bg);
+      border-radius: 12px;
+      padding: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      border: 2px solid transparent;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      cursor: grab;
+      width: 320px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .snap-card:hover {
+      border-color: var(--accent-color);
+      box-shadow: 0 12px 36px rgba(34, 197, 94, 0.25);
+    }
+
+    .snap-card.dragging {
+      cursor: grabbing;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+      border-color: var(--accent-color);
+    }
+
+    .snap-card img {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      pointer-events: none;
+      display: block;
+    }
+
+    .card-footer {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 2px 2px;
+    }
+
+    .card-info-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .location-link {
+      color: var(--accent-color);
+      font-size: 12px;
+      text-decoration: none;
+      font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 230px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+    }
+
+    .location-link:hover {
+      text-decoration: underline;
+    }
+
+    .btn-delete {
+      background: none;
+      border: none;
+      color: var(--text-sub);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .btn-delete:hover {
+      color: #ef4444;
+      background: rgba(239, 68, 68, 0.15);
+    }
+
+    /* Copy to Slack Button */
+    .btn-copy-slack {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-main);
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      width: 100%;
+    }
+
+    .btn-copy-slack:hover {
+      background: rgba(255, 255, 255, 0.18);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .btn-copy-slack.copied {
+      background: var(--accent-color);
+      color: #000;
+      border-color: var(--accent-color);
+    }
+
+    /* Lightbox Modal (Double-click expansion) */
+    #lightbox-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(8px);
+      z-index: 2000;
+      display: none;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      gap: 16px;
+      padding: 40px;
+    }
+
+    #lightbox-modal.active {
+      display: flex;
+    }
+
+    #lightbox-img {
+      max-width: 90vw;
+      max-height: 80vh;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+      border: 2px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .lightbox-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .lightbox-btn {
+      background: var(--accent-color);
+      color: #000;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .lightbox-close {
+      position: absolute;
+      top: 24px;
+      right: 28px;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      color: #fff;
+      font-size: 20px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .lightbox-close:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    /* Empty state overlay */
+    #empty-state {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      color: var(--text-sub);
+      pointer-events: none;
+    }
+
+    #empty-state h2 {
+      font-size: 20px;
+      margin-bottom: 8px;
+      color: var(--text-main);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="status-badge">📸 <b>Ctrl+V</b> to Paste | 🖱️ <b>Drag</b> to Pan | 📜 <b>Scroll</b> to Zoom | <b>Double-Click</b> to Expand</div>
+    <button class="btn-reset-view" id="btn-reset">Reset View</button>
+  </header>
+
+  <div id="viewport">
+    <div id="grid-bg"></div>
+    <div id="world">
+      <div id="empty-state">
+        <h2>Empty Pinboard Canvas</h2>
+        <p>Take a snapshot in Street View and press Ctrl+V / Cmd+V to paste.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Expand Modal -->
+  <div id="lightbox-modal">
+    <button class="lightbox-close" id="lightbox-close">✕</button>
+    <img id="lightbox-img" src="" alt="Expanded Street View Snapshot">
+    <div class="lightbox-toolbar">
+      <a id="lightbox-link" class="lightbox-btn" href="#" target="_blank" rel="noopener noreferrer">
+        📍 Open Location in Street View
+      </a>
+    </div>
+  </div>
+
+  <script>
+    const viewport = document.getElementById('viewport');
+    const world = document.getElementById('world');
+    const gridBg = document.getElementById('grid-bg');
+    const emptyState = document.getElementById('empty-state');
+    const btnReset = document.getElementById('btn-reset');
+
+    const lightbox = document.getElementById('lightbox-modal');
+    const lightboxImg = document.getElementById('lightbox-img');
+    const lightboxLink = document.getElementById('lightbox-link');
+    const lightboxClose = document.getElementById('lightbox-close');
+
+    // Pan & Zoom State
+    let scale = 1;
+    let panX = 0;
+    let panY = 0;
+    const MIN_SCALE = 0.15;
+    const MAX_SCALE = 4.0;
+    let isPanning = false;
+    let startX = 0, startY = 0;
+
+    function updateTransform() {
+      world.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+      gridBg.style.backgroundPosition = `${panX}px ${panY}px`;
+      gridBg.style.backgroundSize = `${32 * scale}px ${32 * scale}px`;
+    }
+
+    // --- Pan Controls ---
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target === viewport || e.target === gridBg || e.button === 1 || e.spaceKey) {
+        isPanning = true;
+        startX = e.clientX - panX;
+        startY = e.clientY - panY;
+        viewport.classList.add('panning');
+      }
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      panX = e.clientX - startX;
+      panY = e.clientY - startY;
+      updateTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+      isPanning = false;
+      viewport.classList.remove('panning');
+    });
+
+    // --- Zoom Controls (Cursor-Centered) ---
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+
+      const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+      const newScale = Math.min(Math.max(scale * zoomFactor, MIN_SCALE), MAX_SCALE);
+
+      if (newScale !== scale) {
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+
+        panX = mouseX - (mouseX - panX) * (newScale / scale);
+        panY = mouseY - (mouseY - panY) * (newScale / scale);
+        scale = newScale;
+
+        updateTransform();
+      }
+    }, { passive: false });
+
+    // Reset View
+    btnReset.addEventListener('click', () => {
+      scale = 1;
+      panX = 0;
+      panY = 0;
+      updateTransform();
+    });
+
+    // --- Smart Paste Handler ---
+    let pasteIndex = 0;
+    window.addEventListener('paste', async (e) => {
+      e.preventDefault();
+      const clipboardItems = e.clipboardData.items;
+      let imageFile = null;
+      let textUrl = '';
+
+      for (let i = 0; i < clipboardItems.length; i++) {
+        const item = clipboardItems[i];
+        if (item.type.indexOf('image') !== -1) {
+          imageFile = item.getAsFile();
+        } else if (item.type === 'text/plain') {
+          item.getAsString((text) => {
+            if (text.startsWith('http')) textUrl = text;
+          });
+        }
+      }
+
+      if (imageFile) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const spawnX = (window.innerWidth / 2 - panX) / scale - 160 + (pasteIndex * 25);
+          const spawnY = (window.innerHeight / 2 - panY) / scale - 120 + (pasteIndex * 25);
+          pasteIndex = (pasteIndex + 1) % 8;
+
+          createImageCard(event.target.result, textUrl || 'https://maps.google.com', spawnX, spawnY);
+        };
+        reader.readAsDataURL(imageFile);
+      }
+    });
+
+    // --- Card Creation & Draggable ---
+    function createImageCard(imageSrc, url, x, y) {
+      if (emptyState) emptyState.style.display = 'none';
+
+      const card = document.createElement('div');
+      card.className = 'snap-card';
+      card.style.left = `${x}px`;
+      card.style.top = `${y}px`;
+
+      card.innerHTML = `
+        <img src="${imageSrc}" alt="Street View Snapshot" />
+        <div class="card-footer">
+          <div class="card-info-row">
+            <a class="location-link" href="${url}" target="_blank" rel="noopener noreferrer" title="${url}">
+              📍 Street View Location
+            </a>
+            <button class="btn-delete" title="Delete card">✕</button>
+          </div>
+          <button class="btn-copy-slack" title="Copy image and link for Slack">
+            📋 Copy for Slack
+          </button>
+        </div>
+      `;
+
+      // Double-Click to Expand/Focus Lightbox
+      card.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        openLightbox(imageSrc, url);
+      });
+
+      // Copy for Slack Button Handler
+      const copyBtn = card.querySelector('.btn-copy-slack');
+      copyBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await copyToSlack(imageSrc, url, copyBtn);
+      });
+
+      // Enable dragging inside transformed world
+      makeDraggableInWorld(card);
+
+      // Handle delete
+      card.querySelector('.btn-delete').addEventListener('click', (e) => {
+        e.stopPropagation();
+        card.remove();
+        if (world.querySelectorAll('.snap-card').length === 0) {
+          emptyState.style.display = 'block';
+        }
+      });
+
+      world.appendChild(card);
+    }
+
+    // Helper: Copy Image + Link to Clipboard formatted for Slack
+    async function copyToSlack(imageSrc, url, buttonElement) {
+      try {
+        const res = await fetch(imageSrc);
+        const imageBlob = await res.blob();
+
+        const htmlContent = `<a href="${url}"><img src="${imageSrc}" alt="Street View Snapshot" /></a><br><p>📍 <a href="${url}">Street View Location</a></p>`;
+        const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+        const textBlob = new Blob([`📍 Street View: ${url}`], { type: 'text/plain' });
+
+        const clipboardItem = new ClipboardItem({
+          'image/png': imageBlob,
+          'text/html': htmlBlob,
+          'text/plain': textBlob
+        });
+
+        await navigator.clipboard.write([clipboardItem]);
+
+        // Feedback on button
+        const originalText = buttonElement.innerHTML;
+        buttonElement.classList.add('copied');
+        buttonElement.innerHTML = '✅ Copied to Clipboard!';
+
+        setTimeout(() => {
+          buttonElement.classList.remove('copied');
+          buttonElement.innerHTML = originalText;
+        }, 1800);
+      } catch (err) {
+        console.error('Failed to copy item:', err);
+        alert('⚠️ Unable to copy to clipboard directly.');
+      }
+    }
+
+    function makeDraggableInWorld(element) {
+      let isDragging = false;
+      let startMouseX = 0, startMouseY = 0;
+      let cardInitX = 0, cardInitY = 0;
+
+      element.addEventListener('mousedown', (e) => {
+        if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON' || e.button !== 0) return;
+        e.stopPropagation();
+
+        isDragging = true;
+        element.classList.add('dragging');
+        startMouseX = e.clientX;
+        startMouseY = e.clientY;
+        cardInitX = parseFloat(element.style.left) || 0;
+        cardInitY = parseFloat(element.style.top) || 0;
+
+        const onMouseMove = (moveEvent) => {
+          if (!isDragging) return;
+          const deltaX = (moveEvent.clientX - startMouseX) / scale;
+          const deltaY = (moveEvent.clientY - startMouseY) / scale;
+          element.style.left = `${cardInitX + deltaX}px`;
+          element.style.top = `${cardInitY + deltaY}px`;
+        };
+
+        const onMouseUp = () => {
+          isDragging = false;
+          element.classList.remove('dragging');
+          window.removeEventListener('mousemove', onMouseMove);
+          window.removeEventListener('mouseup', onMouseUp);
+        };
+
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+      });
+    }
+
+    // --- Lightbox Modal ---
+    function openLightbox(src, url) {
+      lightboxImg.src = src;
+      lightboxLink.href = url;
+      lightbox.classList.add('active');
+    }
+
+    function closeLightbox() {
+      lightbox.classList.remove('active');
+      lightboxImg.src = '';
+    }
+
+    lightboxClose.addEventListener('click', closeLightbox);
+    lightbox.addEventListener('click', (e) => {
+      if (e.target === lightbox) closeLightbox();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeLightbox();
+    });
+
+    // Initial render
+    updateTransform();
+  </script>
+</body>
+</html>
