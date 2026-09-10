@@ -13,14 +13,12 @@
       --text-main: #f3f4f6;
       --text-sub: #9ca3af;
     }
-
     * {
       box-sizing: border-box;
       margin: 0;
       padding: 0;
       user-select: none;
     }
-
     body {
       background-color: var(--bg-color);
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -29,7 +27,6 @@
       height: 100vh;
       width: 100vw;
     }
-
     /* Top Floating Toolbar */
     header {
       position: fixed;
@@ -47,16 +44,13 @@
       z-index: 1000;
       box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
     }
-
     .status-badge {
       font-size: 13px;
       color: var(--text-sub);
     }
-
     .status-badge b {
       color: var(--accent-color);
     }
-
     .btn-reset-view {
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.15);
@@ -67,11 +61,9 @@
       cursor: pointer;
       transition: background 0.15s ease;
     }
-
     .btn-reset-view:hover {
       background: rgba(255, 255, 255, 0.15);
     }
-
     /* Infinite Canvas Viewport */
     #viewport {
       position: absolute;
@@ -79,11 +71,9 @@
       cursor: grab;
       overflow: hidden;
     }
-
     #viewport.panning {
       cursor: grabbing;
     }
-
     /* Infinite Grid Background */
     #grid-bg {
       position: absolute;
@@ -94,7 +84,6 @@
       background-size: 32px 32px;
       pointer-events: none;
     }
-
     /* The Pan/Zoom Transform Layer */
     #world {
       position: absolute;
@@ -104,7 +93,6 @@
       width: 0;
       height: 0;
     }
-
     /* Interactive Image Card */
     .snap-card {
       position: absolute;
@@ -120,18 +108,15 @@
       flex-direction: column;
       gap: 8px;
     }
-
     .snap-card:hover {
       border-color: var(--accent-color);
       box-shadow: 0 12px 36px rgba(34, 197, 94, 0.25);
     }
-
     .snap-card.dragging {
       cursor: grabbing;
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
       border-color: var(--accent-color);
     }
-
     .snap-card img {
       width: 100%;
       height: auto;
@@ -139,20 +124,17 @@
       pointer-events: none;
       display: block;
     }
-
     .card-footer {
       display: flex;
       flex-direction: column;
       gap: 8px;
       padding: 2px 2px;
     }
-
     .card-info-row {
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-
     .location-link {
       color: var(--accent-color);
       font-size: 12px;
@@ -167,11 +149,9 @@
       gap: 4px;
       cursor: pointer;
     }
-
     .location-link:hover {
       text-decoration: underline;
     }
-
     .btn-delete {
       background: none;
       border: none;
@@ -181,12 +161,10 @@
       padding: 2px 6px;
       border-radius: 4px;
     }
-
     .btn-delete:hover {
       color: #ef4444;
       background: rgba(239, 68, 68, 0.15);
     }
-
     /* URL Box on Card */
     .card-url-box {
       display: flex;
@@ -197,7 +175,6 @@
       padding: 4px 6px;
       gap: 6px;
     }
-
     .card-url-text {
       font-family: monospace;
       font-size: 11px;
@@ -207,7 +184,6 @@
       white-space: nowrap;
       flex: 1;
     }
-
     .btn-copy-url-only {
       background: rgba(255, 255, 255, 0.1);
       border: none;
@@ -219,11 +195,9 @@
       cursor: pointer;
       transition: background 0.15s ease;
     }
-
     .btn-copy-url-only:hover {
       background: rgba(255, 255, 255, 0.2);
     }
-
     /* Action Buttons Row */
     .btn-copy-slack {
       background: #007aff;
@@ -241,16 +215,13 @@
       transition: all 0.15s ease;
       width: 100%;
     }
-
     .btn-copy-slack:hover {
       background: #0063cc;
     }
-
     .btn-copy-slack.copied {
       background: var(--accent-color);
       color: #000;
     }
-
     /* Lightbox Modal */
     #lightbox-modal {
       position: fixed;
@@ -265,11 +236,9 @@
       gap: 16px;
       padding: 40px;
     }
-
     #lightbox-modal.active {
       display: flex;
     }
-
     #lightbox-img {
       max-width: 90vw;
       max-height: 80vh;
@@ -277,13 +246,11 @@
       box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
       border: 2px solid rgba(255, 255, 255, 0.1);
     }
-
     .lightbox-toolbar {
       display: flex;
       align-items: center;
       gap: 16px;
     }
-
     .lightbox-btn {
       background: var(--accent-color);
       color: #000;
@@ -296,7 +263,6 @@
       align-items: center;
       gap: 6px;
     }
-
     .lightbox-close {
       position: absolute;
       top: 24px;
@@ -310,11 +276,9 @@
       border-radius: 50%;
       cursor: pointer;
     }
-
     .lightbox-close:hover {
       background: rgba(255, 255, 255, 0.25);
     }
-
     #empty-state {
       position: absolute;
       top: 50%;
@@ -324,7 +288,6 @@
       color: var(--text-sub);
       pointer-events: none;
     }
-
     #empty-state h2 {
       font-size: 20px;
       margin-bottom: 8px;
@@ -333,7 +296,6 @@
   </style>
 </head>
 <body>
-
   <header>
     <div class="status-badge">📸 <b>Ctrl+V</b> to Paste | 🖱️ <b>Drag</b> to Pan | 📜 <b>Scroll</b> to Zoom | <b>Double-Click</b> to Expand</div>
     <button class="btn-reset-view" id="btn-reset">Reset View</button>
@@ -366,7 +328,6 @@
     const gridBg = document.getElementById('grid-bg');
     const emptyState = document.getElementById('empty-state');
     const btnReset = document.getElementById('btn-reset');
-
     const lightbox = document.getElementById('lightbox-modal');
     const lightboxImg = document.getElementById('lightbox-img');
     const lightboxLink = document.getElementById('lightbox-link');
@@ -412,18 +373,14 @@
     // --- Zoom Controls ---
     viewport.addEventListener('wheel', (e) => {
       e.preventDefault();
-
       const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
       const newScale = Math.min(Math.max(scale * zoomFactor, MIN_SCALE), MAX_SCALE);
-
       if (newScale !== scale) {
         const mouseX = e.clientX;
         const mouseY = e.clientY;
-
         panX = mouseX - (mouseX - panX) * (newScale / scale);
         panY = mouseY - (mouseY - panY) * (newScale / scale);
         scale = newScale;
-
         updateTransform();
       }
     }, { passive: false });
@@ -460,7 +417,6 @@
           const spawnX = (window.innerWidth / 2 - panX) / scale - 160 + (pasteIndex * 25);
           const spawnY = (window.innerHeight / 2 - panY) / scale - 120 + (pasteIndex * 25);
           pasteIndex = (pasteIndex + 1) % 8;
-
           createImageCard(event.target.result, textUrl || 'https://maps.google.com', spawnX, spawnY);
         };
         reader.readAsDataURL(imageFile);
@@ -475,7 +431,6 @@
       card.className = 'snap-card';
       card.style.left = `${x}px`;
       card.style.top = `${y}px`;
-
       card.innerHTML = `
         <img src="${imageSrc}" alt="Street View Snapshot" />
         <div class="card-footer">
@@ -485,16 +440,14 @@
             </a>
             <button class="btn-delete" title="Delete card">✕</button>
           </div>
-
           <!-- Street View URL Box on Card -->
           <div class="card-url-box">
             <span class="card-url-text" title="${url}">${url}</span>
             <button class="btn-copy-url-only" title="Copy URL only">🔗 Copy</button>
           </div>
-
           <!-- Copy for Slack Button -->
-          <button class="btn-copy-slack" title="Copy Image for Slack">
-            📋 Copy Image for Slack
+          <button class="btn-copy-slack" title="Copy Image & Link for Slack">
+            📋 Copy for Slack
           </button>
         </div>
       `;
@@ -514,7 +467,7 @@
         setTimeout(() => copyUrlBtn.textContent = '🔗 Copy', 1500);
       });
 
-      // Copy for Slack Button Handler (Copies pure Image to Clipboard + Shows URL helper toast)
+      // Copy for Slack Button Handler (Copies HTML link + PNG image in a single ClipboardItem)
       const copySlackBtn = card.querySelector('.btn-copy-slack');
       copySlackBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -534,83 +487,44 @@
       world.appendChild(card);
     }
 
-    // Copies raw PNG Image to clipboard for Slack and pops up a quick URL copy toast
+    // Copies HTML (with link + image) and pure PNG to clipboard for rich Slack pasting
     async function copyImageForSlack(imageSrc, url, buttonElement) {
       try {
         const res = await fetch(imageSrc);
         const imageBlob = await res.blob();
 
-        const item = new ClipboardItem({ 'image/png': imageBlob });
-        await navigator.clipboard.write([item]);
+        const htmlSnippet = `<p><a href="${url}">${url}</a></p><p><img src="${imageSrc}" alt="Street View Snapshot" /></p>`;
+        const htmlBlob = new Blob([htmlSnippet], { type: 'text/html' });
+        const textBlob = new Blob([`${url}\n${imageSrc}`], { type: 'text/plain' });
 
-        // Feedback on button
+        const clipboardItem = new ClipboardItem({
+          'text/html': htmlBlob,
+          'image/png': imageBlob,
+          'text/plain': textBlob
+        });
+
+        await navigator.clipboard.write([clipboardItem]);
+
         const originalText = buttonElement.innerHTML;
         buttonElement.classList.add('copied');
-        buttonElement.innerHTML = '✅ Image Copied!';
-
+        buttonElement.innerHTML = '✅ Copied for Slack!';
         setTimeout(() => {
           buttonElement.classList.remove('copied');
           buttonElement.innerHTML = originalText;
         }, 2000);
-
-        // Show floating action pill for quick URL paste
-        showSlackPasteHelperToast(url);
       } catch (err) {
-        console.error('Failed to copy image:', err);
-        alert('⚠️ Unable to copy image to clipboard.');
-      }
-    }
-
-    function showSlackPasteHelperToast(url) {
-      const existing = document.getElementById('slack-helper-toast');
-      if (existing) existing.remove();
-
-      const toast = document.createElement('div');
-      toast.id = 'slack-helper-toast';
-      toast.style.position = 'fixed';
-      toast.style.bottom = '24px';
-      toast.style.right = '24px';
-      toast.style.backgroundColor = '#1e1e1e';
-      toast.style.color = '#ffffff';
-      toast.style.padding = '12px 18px';
-      toast.style.borderRadius = '10px';
-      toast.style.boxShadow = '0 6px 24px rgba(0,0,0,0.45)';
-      toast.style.zIndex = '9999999';
-      toast.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-      toast.style.fontSize = '13px';
-      toast.style.display = 'flex';
-      toast.style.alignItems = 'center';
-      toast.style.gap = '12px';
-      toast.style.border = '1px solid rgba(255, 255, 255, 0.15)';
-
-      toast.innerHTML = `
-        <span>📸 <b>Image is in Clipboard!</b> (Paste into Slack with Ctrl+V)</span>
-        <button id="toast-copy-url" style="
-          background: #22c55e;
-          color: #000;
-          border: none;
-          padding: 6px 12px;
-          border-radius: 6px;
-          font-size: 12px;
-          cursor: pointer;
-          font-weight: 700;
-        ">Copy URL 🔗</button>
-      `;
-
-      document.body.appendChild(toast);
-
-      document.getElementById('toast-copy-url').addEventListener('click', async () => {
-        await navigator.clipboard.writeText(url);
-        const btn = document.getElementById('toast-copy-url');
-        btn.textContent = 'URL Copied! ✅';
-        setTimeout(() => toast.remove(), 1000);
-      });
-
-      setTimeout(() => {
-        if (document.getElementById('slack-helper-toast')) {
-          toast.remove();
+        console.error('Failed to copy rich data to clipboard:', err);
+        try {
+          const res = await fetch(imageSrc);
+          const imageBlob = await res.blob();
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': imageBlob })
+          ]);
+          alert('⚠️ Copied image only (Browser restricted multi-MIME rich clipboard).');
+        } catch (fallbackErr) {
+          alert('⚠️ Unable to access clipboard.');
         }
-      }, 7000);
+      }
     }
 
     function makeDraggableInWorld(element) {
@@ -621,7 +535,6 @@
       element.addEventListener('mousedown', (e) => {
         if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON' || e.button !== 0) return;
         e.stopPropagation();
-
         isDragging = true;
         element.classList.add('dragging');
         startMouseX = e.clientX;
@@ -665,7 +578,6 @@
     lightbox.addEventListener('click', (e) => {
       if (e.target === lightbox) closeLightbox();
     });
-
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') closeLightbox();
     });
