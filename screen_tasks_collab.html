@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Visual Scratchpad v1.5</title>
+
+  <!-- Firebase SDKs for Real-Time Multiplayer Sync -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <!-- ExcelJS & FileSaver for Client-Side Spreadsheet Generation -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.3.0/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body, html { width: 100%; height: 100%; overflow: hidden; background: #0f172a; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #f8fafc; }
+    #toolbar {
+      position: fixed; top: 16px; left: 16px; z-index: 100;
+      display: flex; align-items: center; gap: 8px; background: rgba(30, 41, 59, 0.85); backdrop-filter: blur(8px);
+      padding: 8px 16px; border-radius: 10px; border: 1px solid #334155; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .badge { background: #3b82f6; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 0.75rem; }
+    .room-badge { background: #6366f1; color: white; padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem; }
+    .shortcuts kbd { background: #1e293b; border: 1px solid #475569; padding: 2px 6px; border-radius: 4px; }
+    .btn-danger { background: #ef4444; border: none; color: white; padding: 6px 12px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.15s ease; }
+    .btn-danger:hover { background: #dc2626; }
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #10b981; color: white; padding: 10px 20px; border-radius: 8px;
+      font-weight: 600; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      opacity: 0; pointer-events: none; transition: all 0.2s ease; z-index: 2000;
+    }
+    #toast.show { opacity: 1; transform: translate(-50%, -8px); }
+    #viewport { width: 100vw; height: 100vh; position: relative; cursor: grab; }
+    #viewport.panning { cursor: grabbing; }
+    #world { position: absolute; top: 0; left: 0; transform-origin: 0 0; width: 0; height: 0; }
+    .card {
+      position: absolute; background: #1e293b; border: 2px solid #334155; border-radius: 10px;
+      padding: 10px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); cursor: move; display: flex; flex-direction: column;
+      width: max-content; max-width: 480px; transition: opacity 0.15s, filter 0.15s, border-color 0.15s;
+    }
+    .card.selected { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4), 0 10px 25px rgba(0,0,0,0.6); }
+    .card.done { opacity: 0.45; filter: grayscale(0.8); }
+    .card img { max-width: 100%; max-height: 320px; border-radius: 6px; border: 1px solid #334155; pointer-events: none; }
+    .card-footer { margin-top: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .card-note { font-size: 0.95rem; font-weight: 600; word-break: break-word; margin-right: 12px; cursor: text; user-select: text; border-radius: 4px; padding: 2px 4px; }
+    .card-note:hover { background: rgba(255,255,255,0.06); }
+    .card-meta { font-size: 0.7rem; color: #94a3b8; margin-top: 4px; }
+    .card-actions { display: flex; gap: 6px; align-items: center; }
+    .btn-action { background: none; border: none; color: #94a3b8; padding: 3px 6px; font-size: 0.85rem; cursor: pointer; border-radius: 4px; text-decoration: none; }
+    .btn-action:hover { background: rgba(255,255,255,0.1); color: #f8fafc; }
+    .btn-copy { color: #60a5fa; font-weight: 600; }
+    .btn-delete { color: #ef4444; }
+    #empty-state { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; color: #64748b; }
+    #markup-modal { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); display: none; flex-direction: column; align-items: center; justify-content: center; }
+    #markup-modal.active { display: flex; }
+    #markup-toolbar { display: flex; gap: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 8px 14px; margin-bottom: 12px; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+    .tool-btn { background: #334155; border: 1px solid #475569; color: white; padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; cursor: pointer; font-weight: 600; }
+    .tool-btn.active { background: #3b82f6; border-color: #60a5fa; }
+    .save-btn { background: #10b981; } .cancel-btn { background: #64748b; }
+    #canvas-container { position: relative; max-width: 90vw; max-height: 75vh; border: 2px solid #334155; border-radius: 8px; }
+    #drawing-canvas { position: absolute; top: 0; left: 0; cursor: crosshair; }
+    .cursor { position: absolute; transition: transform 0.1s linear; pointer-events: none; top:0; left:0; }
+    .cursor-svg { width: 24px; height: 24px; }
+    .cursor-label { position: absolute; top: 20px; left: 16px; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; color: white; white-space: nowrap; }
+  </style>
+</head>
+<body tabindex="0">
+  <div id="toolbar">
+    <span class="badge">SCRATCHPAD</span>
+    <span class="room-badge" id="room-indicator">Room: general</span>
+    <button class="btn-danger" onclick="clearCanvas()">🗑️ Clear All</button>
+  </div>
+  <div id="toast"></div>
+  <div id="viewport">
+    <div id="empty-state"><h2>📌 Canvas is empty</h2><p>Snip any screen region, then press <b>Ctrl + V</b> to paste.</p></div>
+    <div id="world"></div>
+  </div>
+  <div id="markup-modal">
+    <div id="markup-toolbar">
+      <input type="text" id="modal-note-input" placeholder="Task / Note description...">
+      <button class="save-btn" onclick="saveMarkupAndFinish()">💾 Save</button>
+      <button class="cancel-btn" onclick="closeMarkupModal()">Cancel</button>
+    </div>
+    <div id="canvas-container"><canvas id="base-canvas"></canvas><canvas id="drawing-canvas"></canvas></div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 🌐 1. FIREBASE REALTIME MULTIPLAYER CONFIGURATION
+    // =========================================================================
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyDObEPJX-c29FnXNzy-fV_dvIq1YnKyaEk",
+  authDomain: "canvas-6a3f3.firebaseapp.com",
+  databaseURL: "https://canvas-6a3f3-default-rtdb.firebaseio.com",
+  projectId: "canvas-6a3f3",
+  storageBucket: "canvas-6a3f3.firebasestorage.app",
+  messagingSenderId: "578893283343",
+  appId: "1:578893283343:web:bd6fb5bd6e586a0fbca37a",
+  measurementId: "G-H4K67PJ3N1"
+};
+
+    const hashParams = new URLSearchParams(window.location.hash.slice(1));
+    const currentRoom = hashParams.get('room') || 'general';
+    document.getElementById('room-indicator').innerText = `Room: ${currentRoom}`;
+
+    let dbRef, cursorsRef, cards = [], cursors = {};
+    let isFirebaseActive = false;
+    
+    try {
+      if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        dbRef = db.ref(`rooms/${currentRoom}/cards`);
+        cursorsRef = db.ref(`rooms/${currentRoom}/cursors`);
+        isFirebaseActive = true;
+      }
+    } catch (e) { console.warn("Firebase init failed, falling back to local mode:", e); }
+
+    // ==========================================
+    // 🌌 2. PAN & ZOOM ENGINE
+    // ==========================================
+    const viewport = document.getElementById('viewport');
+    const world = document.getElementById('world');
+    const emptyState = document.getElementById('empty-state');
+    const toast = document.getElementById('toast');
+    let panX = window.innerWidth / 2, panY = window.innerHeight / 2, scale = 1;
+    let isPanning = false, startX, startY, selectedCardId = null;
+
+    function updateTransform() { world.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`; }
+    updateTransform();
+    viewport.addEventListener('mousedown', (e) => {
+      if (e.target === viewport || e.target === world) selectCard(null);
+      if (e.button === 1 || (e.button === 0 && e.target === viewport)) {
+        isPanning = true; startX = e.clientX - panX; startY = e.clientY - panY;
+        viewport.classList.add('panning');
+      }
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!isPanning) return;
+      panX = e.clientX - startX; panY = e.clientY - startY;
+      updateTransform();
+    });
+    window.addEventListener('mouseup', () => { isPanning = false; viewport.classList.remove('panning'); });
+    viewport.addEventListener('contextmenu', e => e.preventDefault());
+    viewport.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      panX = e.clientX - (e.clientX - panX) * zoomFactor;
+      panY = e.clientY - (e.clientY - panY) * zoomFactor;
+      scale *= zoomFactor;
+      updateTransform();
+    }, { passive: false });
+
+    // ==========================================
+    // 🎨 3. MARKUP & MODAL ENGINE
+    // ==========================================
+    const markupModal = document.getElementById('markup-modal');
+    const baseCanvas = document.getElementById('base-canvas'), baseCtx = baseCanvas.getContext('2d');
+    const drawingCanvas = document.getElementById('drawing-canvas'), drawCtx = drawingCanvas.getContext('2d');
+    const modalNoteInput = document.getElementById('modal-note-input');
+    let rawBaseImageSrc, editingCardId, pasteUrlBuffer;
+
+    function openMarkupModal(originalBaseImg, noteText = "", cardId = null, url = null) {
+      editingCardId = cardId; rawBaseImageSrc = originalBaseImg;
+      modalNoteInput.value = noteText; pasteUrlBuffer = url;
+      const img = new Image();
+      img.src = originalBaseImg;
+      img.onload = () => {
+        baseCanvas.width = img.width; baseCanvas.height = img.height;
+        drawingCanvas.width = img.width; drawingCanvas.height = img.height;
+        baseCtx.drawImage(img, 0, 0);
+        markupModal.classList.add('active');
+        setTimeout(() => modalNoteInput.focus(), 100);
+      };
+    }
+
+    function saveMarkupAndFinish() {
+      const updatedNote = modalNoteInput.value.trim();
+      const targetCardId = editingCardId;
+      closeMarkupModal();
+      if (targetCardId) {
+        const card = cards.find(c => c.id === targetCardId);
+        if (card) {
+          card.note = updatedNote || (card.url ? 'Pasted Image' : 'Untitled Note');
+          syncSaveCard(card);
+        }
+      } else {
+        createAndAddCard(rawBaseImageSrc, rawBaseImageSrc, [], updatedNote, pasteUrlBuffer);
+      }
+    }
+    function closeMarkupModal() {
+      markupModal.classList.remove('active');
+      editingCardId = pasteUrlBuffer = null;
+    }
+
+    // ==========================================
+    // 📋 4. PASTE & CLIPBOARD HANDLER
+    // ==========================================
+    window.addEventListener('paste', async (e) => {
+      if (markupModal.classList.contains('active')) return;
+      let imageFile = null, textContent = '';
+      const textPromises = [];
+      for (let item of e.clipboardData.items) {
+        if (item.type.indexOf('image') !== -1) imageFile = item.getAsFile();
+        else if (item.type === 'text/plain') textPromises.push(new Promise(r => item.getAsString(r)));
+      }
+      if (!imageFile) return;
+      e.preventDefault();
+      if (textPromises.length > 0) textContent = (await Promise.all(textPromises)).join('\n');
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const isUrl = textContent.trim().startsWith('http');
+        openMarkupModal(event.target.result, isUrl ? textContent.trim() : textContent, null, isUrl ? textContent.trim() : null);
+      };
+      reader.readAsDataURL(imageFile);
+    });
+
+    // ==========================================
+    // 🗂️ 5. CARD LOGIC & RENDERING
+    // ==========================================
+    function selectCard(cardId) {
+      selectedCardId = cardId;
+      document.querySelectorAll('.card').forEach(el => el.classList.remove('selected'));
+      if (cardId) document.getElementById(`card-${cardId}`)?.classList.add('selected');
+    }
+    function createAndAddCard(img, originalBaseImg, shapes, note, url = null) {
+      const newCard = {
+        id: Date.now().toString(), img, originalBaseImg, shapes, note, url,
+        timestamp: new Date().toLocaleString(), x: (-panX / scale) + 100, y: (-panY / scale) + 100, done: false
+      };
+      cards.push(newCard);
+      syncSaveCard(newCard);
+    }
+    function syncSaveCard(card) {
+      const localCard = cards.find(c => c.id === card.id);
+      if (localCard) Object.assign(localCard, card); else cards.push(card);
+      if (isFirebaseActive) dbRef.child(card.id).set(card);
+      else localStorage.setItem(`scratchpad_${currentRoom}`, JSON.stringify(cards));
+    }
+    function syncDeleteCard(cardId) {
+      if (isFirebaseActive) dbRef.child(cardId).remove();
+      else {
+        cards = cards.filter(c => c.id !== cardId);
+        localStorage.setItem(`scratchpad_${currentRoom}`, JSON.stringify(cards));
+      }
+    }
+    function clearCanvas() {
+      if (confirm("Clear all cards from this room?")) {
+        if (isFirebaseActive) dbRef.remove();
+        else localStorage.removeItem(`scratchpad_${currentRoom}`);
+      }
+    }
+    function renderCard(card) {
+      let el = document.getElementById(`card-${card.id}`);
+      if (!el) {
+        el = document.createElement('div');
+        el.id = `card-${card.id}`;
+        world.appendChild(el);
+      }
+      el.className = `card ${card.done ? 'done' : ''} ${selectedCardId === card.id ? 'selected' : ''}`;
+      el.style.left = `${card.x}px`;
+      el.style.top = `${card.y}px`;
+      el.innerHTML = `
+        <img src="${card.img}">
+        <div class="card-footer">
+          <div><div class="card-note">${card.note}</div><div class="card-meta">${card.timestamp}</div></div>
+          <div class="card-actions">
+            ${card.url ? `<a href="${card.url}" target="_blank" class="btn-action">🔗 Link</a>` : ''}
+            <input type="checkbox" ${card.done ? 'checked' : ''} onchange="toggleDone('${card.id}')">
+            <button class="btn-action btn-delete" onclick="syncDeleteCard('${card.id}')">✕</button>
+          </div>
+        </div>`;
+      el.onmousedown = (e) => {
+        selectCard(card.id);
+        if (e.target.matches('input,button,a,.card-note')) return;
+        isDragging = true; dragStartX = e.clientX - (card.x * scale); dragStartY = e.clientY - (card.y * scale);
+        e.stopPropagation();
+        const onMove = (me) => {
+          if (!isDragging) return;
+          card.x = (me.clientX - dragStartX) / scale; card.y = (me.clientY - dragStartY) / scale;
+          el.style.left = `${card.x}px`; el.style.top = `${card.y}px`;
+          if (isFirebaseActive) throttledUpdate(card.id, { x: card.x, y: card.y });
+        };
+        const onUp = () => {
+          isDragging = false; if (!isFirebaseActive) syncSaveCard(card);
+          window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp);
+      };
+    }
+    function toggleDone(id) {
+      const card = cards.find(c => c.id === id);
+      if (card) { card.done = !card.done; syncSaveCard(card); }
+    }
+
+    // ==========================================
+    // ✨ 6. LIVE CURSORS & REALTIME SYNC
+    // ==========================================
+    const userId = 'user-' + Math.random().toString(36).substr(2, 9);
+    const userColor = `hsl(${Math.random() * 360}, 80%, 60%)`;
+    const throttledUpdate = throttle((id, data) => dbRef.child(id).update(data), 100);
+
+    function initRealtimeSync() {
+      if (isFirebaseActive) {
+        dbRef.on('value', s => {
+          cards = s.val() ? Object.values(s.val()) : [];
+          world.innerHTML = '';
+          cards.forEach(renderCard);
+          updateEmptyState();
+        });
+        cursorsRef.on('value', s => {
+          cursors = s.val() || {};
+          Object.keys(cursors).forEach(id => {
+            if (id === userId) return;
+            let cEl = document.getElementById(id);
+            if (!cEl) {
+              cEl = document.createElement('div'); cEl.id = id; cEl.className = 'cursor';
+              cEl.innerHTML = `<svg class="cursor-svg" viewBox="0 0 24 24"><path d="M7.6 23.2l-6.2-20.3 21.3 9-9.9 1.4-5.2 9.9z" fill="${cursors[id].color}"/></svg><div class="cursor-label" style="background-color:${cursors[id].color};">${cursors[id].name}</div>`;
+              world.appendChild(cEl);
+            }
+            cEl.style.transform = `translate(${cursors[id].x}px, ${cursors[id].y}px)`;
+          });
+        });
+        cursorsRef.child(userId).onDisconnect().remove();
+      } else {
+        cards = JSON.parse(localStorage.getItem(`scratchpad_${currentRoom}`) || '[]');
+        cards.forEach(renderCard);
+      }
+      updateEmptyState();
+    }
+    function updateEmptyState() { emptyState.style.display = cards.length === 0 ? 'block' : 'none'; }
+    
+    viewport.addEventListener('mousemove', throttle(e => {
+        if (!isFirebaseActive) return;
+        const x = (e.clientX - panX) / scale;
+        const y = (e.clientY - panY) / scale;
+        cursorsRef.child(userId).set({ x, y, color: userColor, name: userId.substr(5,4) });
+    }, 50));
+
+    function throttle(func, limit) {
+      let inThrottle;
+      return function() {
+        const args = arguments, context = this;
+        if (!inThrottle) {
+          func.apply(context, args);
+          inThrottle = true;
+          setTimeout(() => inThrottle = false, limit);
+        }
+      };
+    }
+
+    initRealtimeSync();
+  </script>
+</body>
+</html>
