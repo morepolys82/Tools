@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini AI Canvas Editor</title>
+  <!-- Fabric.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background-color: #18181b;
+      color: #f4f4f5;
+    }
+
+    header {
+      background-color: #27272a;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      border-bottom: 1px solid #3f3f46;
+      flex-wrap: wrap;
+    }
+
+    .input-group {
+      display: flex;
+      gap: 8px;
+      flex-grow: 1;
+    }
+
+    input[type="text"], input[type="password"] {
+      padding: 8px 12px;
+      border: 1px solid #3f3f46;
+      border-radius: 6px;
+      background: #09090b;
+      color: #fff;
+      font-size: 14px;
+    }
+
+    input[type="text"] {
+      flex-grow: 1;
+    }
+
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      background-color: #2563eb;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background-color: #1d4ed8;
+    }
+
+    button.secondary {
+      background-color: #3f3f46;
+    }
+
+    button.secondary:hover {
+      background-color: #52525b;
+    }
+
+    button:disabled {
+      background-color: #52525b;
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    #canvas-container {
+      flex-grow: 1;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    canvas {
+      border: 1px solid #3f3f46;
+      background-color: #09090b;
+      border-radius: 8px;
+    }
+
+    .status-msg {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      background: rgba(9, 9, 11, 0.9);
+      border: 1px solid #3f3f46;
+      color: #f4f4f5;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      display: none;
+    }
+
+    .instructions {
+      font-size: 12px;
+      color: #a1a1aa;
+      margin-top: 4px;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <input type="password" id="geminiToken" placeholder="Gemini API Key (AIzaSy...)" style="width: 230px;" />
+    
+    <!-- Hidden File Input for Button Upload Fallback -->
+    <input type="file" id="imageLoader" accept="image/*" style="display:none;" />
+    <button class="secondary" onclick="document.getElementById('imageLoader').click()">Upload Image</button>
+
+    <div class="input-group">
+      <input type="text" id="aiPrompt" placeholder="Prompt (e.g., 'Change the targeted region into futuristic neon sunglasses')" />
+      <button id="addBoxBtn" class="secondary" onclick="addInpaintBox()">+ Target Box</button>
+      <button id="generateBtn" onclick="runGeminiAI()">Run Gemini AI</button>
+    </div>
+    <div class="instructions">
+      1. Paste image (Ctrl+V / Cmd+V) or click Upload &nbsp;|&nbsp; 2. (Optional) Click "+ Target Box" to highlight an edit region &nbsp;|&nbsp; 3. Enter prompt & Run
+    </div>
+  </header>
+
+  <div id="canvas-container">
+    <canvas id="editorCanvas"></canvas>
+    <div id="status" class="status-msg">Processing...</div>
+  </div>
+
+  <script>
+    // 1. Initialize Fabric Canvas
+    const canvas = new fabric.Canvas('editorCanvas', {
+      width: window.innerWidth - 40,
+      height: window.innerHeight - 120,
+      backgroundColor: '#09090b'
+    });
+
+    let currentBaseImage = null;
+    let targetBox = null;
+
+    const statusEl = document.getElementById('status');
+    const generateBtn = document.getElementById('generateBtn');
+
+    function showStatus(text) {
+      statusEl.textContent = text;
+      statusEl.style.display = 'block';
+    }
+
+    function hideStatus() {
+      statusEl.style.display = 'none';
+    }
+
+    // Helper: Render Image File onto Canvas
+    function renderImageFile(file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        fabric.Image.fromURL(event.target.result, (img) => {
+          if (img.width > 800) {
+            img.scaleToWidth(800);
+          }
+          img.set({
+            left: canvas.width / 2 - (img.scaledWidth / 2),
+            top: canvas.height / 2 - (img.scaledHeight / 2),
+            selectable: true
+          });
+          
+          currentBaseImage = img;
+          canvas.add(img);
+          canvas.setActiveObject(img);
+          canvas.renderAll();
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // 2. Multi-Fallback Clipboard Paste Event Handler
+    window.addEventListener('paste', async (e) => {
+      let imageFile = null;
+
+      // Method A: Check standard clipboard items
+      const items = (e.clipboardData || e.originalEvent.clipboardData)?.items;
+      if (items) {
+        for (const item of items) {
+          if (item.type.indexOf('image') === 0) {
+            imageFile = item.getAsFile();
+            break;
+          }
+        }
+      }
+
+      // Method B: Check clipboard files array
+      if (!imageFile && e.clipboardData?.files?.length > 0) {
+        for (const file of e.clipboardData.files) {
+          if (file.type.indexOf('image') === 0) {
+            imageFile = file;
+            break;
+          }
+        }
+      }
+
+      // Method C: Navigator Clipboard API fallback
+      if (!imageFile && navigator.clipboard?.read) {
+        try {
+          const clipboardItems = await navigator.clipboard.read();
+          for (const item of clipboardItems) {
+            const imageType = item.types.find(t => t.startsWith('image/'));
+            if (imageType) {
+              imageFile = await item.getType(imageType);
+              break;
+            }
+          }
+        } catch (err) {
+          console.warn("Clipboard API read permission fallback failed:", err);
+        }
+      }
+
+      if (imageFile) {
+        renderImageFile(imageFile);
+      } else {
+        alert("No image pixels found on clipboard. Try copying raw pixels (e.g., Snipping Tool / Screenshot) or use the Upload Image button.");
+      }
+    });
+
+    // 3. File Input Upload Handler
+    document.getElementById('imageLoader').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (file) renderImageFile(file);
+    });
+
+    // 4. Add Optional Target Region Box
+    function addInpaintBox() {
+      if (!currentBaseImage) {
+        alert('Please paste or upload an image onto the canvas first.');
+        return;
+      }
+
+      if (targetBox) {
+        canvas.setActiveObject(targetBox);
+        canvas.renderAll();
+        return;
+      }
+
+      targetBox = new fabric.Rect({
+        left: currentBaseImage.left + (currentBaseImage.scaledWidth / 4),
+        top: currentBaseImage.top + (currentBaseImage.scaledHeight / 4),
+        width: currentBaseImage.scaledWidth / 2,
+        height: currentBaseImage.scaledHeight / 2,
+        fill: 'rgba(37, 99, 235, 0.35)',
+        stroke: '#2563eb',
+        strokeWidth: 2,
+        strokeDashArray: [5, 5],
+        cornerColor: '#2563eb',
+        cornerStyle: 'circle',
+        transparentCorners: false
+      });
+
+      canvas.add(targetBox);
+      canvas.setActiveObject(targetBox);
+      canvas.renderAll();
+    }
+
+    // Export Base64 string without data URL header
+    function getCleanBase64Image() {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = currentBaseImage.width;
+      tempCanvas.height = currentBaseImage.height;
+      const ctx = tempCanvas.getContext('2d');
+      
+      const element = currentBaseImage.getElement();
+      ctx.drawImage(element, 0, 0, tempCanvas.width, tempCanvas.height);
+      
+      const dataUrl = tempCanvas.toDataURL('image/png');
+      return dataUrl.replace(/^data:image\/(png|jpeg|jpg);base64,/, "");
+    }
+
+    // 5. Send Image & Prompt to Gemini API
+    async function runGeminiAI() {
+      const apiKey = document.getElementById('geminiToken').value.trim();
+      const userPrompt = document.getElementById('aiPrompt').value.trim();
+
+      if (!apiKey) return alert('Please enter your Gemini API Key from Google AI Studio.');
+      if (!userPrompt) return alert('Please enter a prompt.');
+      if (!currentBaseImage) return alert('Please paste or upload an image first.');
+
+      generateBtn.disabled = true;
+      showStatus('Sending request to Gemini API...');
+
+      const rawBase64 = getCleanBase64Image();
+
+      let fullPrompt = userPrompt;
+      if (targetBox) {
+        fullPrompt = `Modify the provided image based on this description: ${userPrompt}. Focus the changes on the central section of the subject.`;
+      }
+
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`;
+
+      try {
+        const response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            contents: [
+              {
+                parts: [
+                  {
+                    inline_data: {
+                      mime_type: "image/png",
+                      data: rawBase64
+                    }
+                  },
+                  {
+                    text: fullPrompt
+                  }
+                ]
+              }
+            ],
+            generationConfig: {
+              responseModalities: ["TEXT", "IMAGE"]
+            }
+          })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error?.message || `HTTP error! Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        
+        let newImageSrc = null;
+        for (const part of parts) {
+          if (part.inline_data) {
+            newImageSrc = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
+            break;
+          }
+        }
+
+        if (!newImageSrc) {
+          const textPart = parts.find(p => p.text)?.text;
+          throw new Error(textPart || "Gemini did not return an updated image.");
+        }
+
+        showStatus('Adding generated result to canvas...');
+
+        if (targetBox) {
+          canvas.remove(targetBox);
+          targetBox = null;
+        }
+
+        fabric.Image.fromURL(newImageSrc, (aiImg) => {
+          aiImg.scaleToWidth(currentBaseImage.scaledWidth);
+          aiImg.set({
+            left: currentBaseImage.left + 50,
+            top: currentBaseImage.top + 50
+          });
+
+          canvas.add(aiImg);
+          canvas.setActiveObject(aiImg);
+          canvas.renderAll();
+          hideStatus();
+        });
+
+      } catch (err) {
+        console.error(err);
+        alert(`Gemini Generation Failed: ${err.message}`);
+        hideStatus();
+      } finally {
+        generateBtn.disabled = false;
+      }
+    }
+
+    // Responsive Canvas Resizing
+    window.addEventListener('resize', () => {
+      canvas.setWidth(window.innerWidth - 40);
+      canvas.setHeight(window.innerHeight - 120);
+      canvas.renderAll();
+    });
+  </script>
+</body>
+</html>
